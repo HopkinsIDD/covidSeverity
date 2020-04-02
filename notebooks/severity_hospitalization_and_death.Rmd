@@ -1,0 +1,308 @@
+---
+title: "COVID-19 Severity, Hospitalization, and Mortality Rates"
+output: html_notebook
+---
+
+
+Here we explore adjustments to reported hospitalization, severity, and mortality rates to take data reported from China to apply to other populations with different population age structures. Adjusting in this manner allows us to estimate age-adjusted rates for other populations of interest. We can then apply these estimates to infections estimated through transmission models or other means to estimate the number of hospitalizations, severe cases, and deaths. 
+
+This adjustment makes several specific assumptions. First, we assume that variation in these rates is highly specific to age, and not other factors, and that these age-specific rates will be consistent across populations. Additionally, when applying these adjusted rates to transmission models that are not age-structured, we assume the rate of infection is the same across all ages.
+
+
+```{r setup, include=FALSE, message = F, warning = F, results = F}
+require(knitr)
+require(tidyverse)
+require(gridExtra)
+# require(rstan)
+library(RColorBrewer)
+library(RgoogleMaps)
+
+options(scipen = 999)
+knitr::opts_knit$set(root.dir = "..")
+knitr::opts_chunk$set(echo=TRUE)
+
+#knitr::opts_knit$set(root.dir = normalizePath("../"))
+# source("../R/DataLoadUtils.r")
+# source("../R/BasicEpiAnalyses.r")
+# source("../R/DataUtils.r")
+# source("R/DataLoadUtils.r")
+# source("R/BasicEpiAnalyses.r")
+# source("R/DataUtils.r")
+
+```
+
+
+
+```{r functions}
+
+##' 
+##' Get population distribution and aggregate it to 10 year age groups
+##' 
+##' @param country country of interest
+##' 
+##' 
+get_age_pop <- function(country){
+    
+    require(stringi)
+    #require(globaltoolbox)
+    
+    pop_data <- read_csv("data/WPP2019_POP.csv")
+    pop_data <- pop_data %>% 
+        mutate(country_clean = stringi::stri_trans_general(location, "Latin-ASCII")) %>%
+        filter(tolower(country_clean) == tolower(country)) %>% filter(year==max(year))
+    
+    # print for a double check
+    print(pop_data$location)
+    pop_data <- pop_data[,-(1:4)] %>% select(-country_clean)
+    dat <- as.numeric(pop_data)
+    names(dat) <- colnames(pop_data)
+    return(dat)
+}
+
+```
+
+
+
+## AGE ADJUSTMENT
+Age distribution data source: https://population.un.org/wpp/Download/Standard/Population/
+
+```{r}
+
+china_agepop <- get_age_pop("China")
+bangladesh_agepop <- get_age_pop("Bangladesh")
+#kutupalong_agepop <- get_age_pop("Bangladesh")
+
+
+```
+
+
+# Estimate Hospitalization Rate
+
+### ~ Prob Hospitalization - Total Population by Age, Reported Case-adjusted
+
+```{r est_hosp, eval=TRUE, echo=FALSE}
+# Prob hosp by age in Mainland China (soure: https://github.com/cmrivers/ncov/blob/master/COVID-19.pdf)
+ages_ <- c(0, 10, 20, 30, 40, 50, 60, 70, 80)
+ncases_age <- c(416, 549, 3619, 7600, 8571, 10008, 8583, 3918, 1408)
+cfr_age <- c(.002, .002, .002, .002, .004, .013, .036, .080, .148)
+age_cats <- paste0(seq(0,80,10), "-", c(seq(9,79,10),100))
+china_casedeath <- data.frame(agemin=ages_, agegroup=age_cats, cases=ncases_age, cfr=cfr_age)
+
+# China population by age
+nage_china <- get_age_pop("China") * 1000 
+nage_china[9] <- sum(nage_china[9:11])
+nage_china <- nage_china[1:9] 
+
+# probability, OR hospitalized
+p_hosp_age <- ncases_age / nage_china
+odds_hosp_age <- (p_hosp_age / (1-p_hosp_age))
+or_hosp_age <- odds_hosp_age / odds_hosp_age[6]
+
+res_allchina <- data.frame(age = ages_, age_cats=factor(age_cats, ordered = TRUE), p_hosp=p_hosp_age, or_hosp=or_hosp_age, hosp1000 = p_hosp_age*1000)
+
+grid.arrange(
+  ggplot(res_allchina, aes(age_cats, hosp1000)) + 
+      geom_bar(stat="identity", fill="purple") + 
+      xlab(NULL) + ylab("Hospitalizations per 1000"),
+  ggplot(res_allchina, aes(age_cats, or_hosp)) + 
+      geom_point(shape=22, color="blue", fill="blue", size=2) + 
+      scale_y_continuous(trans="log", breaks=c(.05, .1, .3, 1,1.5)) + 
+      xlab(NULL)+ ylab("OR Hospitalization") + coord_cartesian(ylim = c(0.05, 1.5)) + 
+      geom_hline(yintercept = 1, color="grey"), nrow=2)
+
+```
+
+
+#### High Capture and Hospitalization rate scenario
+ 
+Here we assume that 11% of infected individuals age 70+ years are severe following Bi et al. 2020. If we assume that 11% is equivalent to those who necessitate hospitalization, we can use this to get the age-adjusted hospitalization rate.
+ 
+```{r}
+
+# if assume 75% of those aged 70-80 are hospitalized, we can get the proportions ...
+#  x hosps age a = p_inf_hosp_age * p_infect * n_age
+p_inf_hosp_age_70 <- .11  # using severe cases from Shenzhen data
+
+
+## Now we can get the probability of hospitalization by age
+p_infect  <- ncases_age[8]  / ( p_inf_hosp_age_70 * nage_china[8] )
+p_inf_hosp_age <- ncases_age / (p_infect * nage_china)
+p_inf_hosp_age
+
+
+## Now to check the overall hospitalization rate among infections estimate from this:
+n_infections <- ncases_age / p_inf_hosp_age
+n_infections
+sum(n_infections)
+sum(ncases_age)
+
+# overall prop severe
+print(paste0("Proportion severe of all infections across all China: ", 
+             round(sum(ncases_age) / sum(n_infections)*100, 2), "%"))
+
+
+# We will use this as the high capture scenario
+p_inf_hosp_age_high <- p_inf_hosp_age
+p_hosp_china_high <- sum(p_inf_hosp_age_high * (nage_china / sum(nage_china)))
+p_hosp_china_high
+
+
+```
+
+This seems pretty good.
+
+
+
+
+#### Try again with only Hubei cases
+
+```{r}
+
+# if assume 75% of those aged 80+ are hospitalized, we can get the proportions ...
+#  x hosps age a = p_inf_hosp_age * p_infect * n_age
+p_inf_hosp_age_70 <- .11
+
+
+##-------------------------------------------------------------------
+pr_age <- c(.004, .004, .045, .131, .156, .22, .265, .126, .045, .005)
+names(pr_age) <- seq(0,90,10)
+
+nage_china <- get_age_pop("China")
+ncases_age <- round(pr_age*33367)
+nage_china <- nage_china
+nage_china[8] <- sum(nage_china[8:11])
+nage_china <- nage_china[-(9:11)]  
+
+ncases_age[8] <- sum(ncases_age[8:10])
+ncases_age <- ncases_age[-(9:10)]  
+
+p_hosp_age <- ncases_age / nage_china
+odds_hosp_age <- (p_hosp_age / (1-p_hosp_age))
+or_hosp_age <- odds_hosp_age / odds_hosp_age[6]
+
+
+## Now we can get the probability of hospitalization by age
+p_infect  <- ncases_age[8]  / ( p_inf_hosp_age_70 * nage_china[8] )
+p_inf_hosp_age <- ncases_age / (p_infect * nage_china)
+p_inf_hosp_age
+
+## Now to check the overall hospitalization rate among infections estimate from this:
+n_infections <- ncases_age / p_inf_hosp_age
+sum(n_infections)
+sum(ncases_age)
+
+# overall prop hospitalized
+print(paste0("Proportion severe of all infections across in Hubei: ", 
+             round(sum(ncases_age) / sum(n_infections)*100, 2), "%"))
+
+# We will use this as the low capture scenario
+p_inf_hosp_age_low <- p_inf_hosp_age
+p_hosp_china_low <- sum(p_inf_hosp_age_low * (nage_china / sum(nage_china)))
+
+
+
+
+```
+
+In this scenario, we are assuming 11% of those 70+ are severe
+
+
+#### ~ Prob Hosp - CFR-adjusted
+Let's do it again but using CFR for age adjustment
+
+```{r}
+
+# Fatality OR - from Justin's estimates
+cfr_OR <- c(.10, .10, .10, .14, .16, 1, 5.88, 17.71) # will need updating
+names(cfr_OR) <- c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70-100")
+
+
+# assume prob hosp for 70+ is .75
+p_hosp_age70 <- .11 # if we wanted to get prob of death, this should be .15*.75
+odds_hosp_age70 <- (p_hosp_age70 / (1-p_hosp_age70))
+odds_hosp_age50 <- odds_hosp_age70 / cfr_OR[8]
+odds_hosp <- cfr_OR * odds_hosp_age50 
+p_inf_hosp_age <- odds_hosp / (1 + odds_hosp)
+
+# combine last X age groups
+nage_china <- get_age_pop("China")
+ncases_age <- round(pr_age*33367)
+ncases_age2 <- ncases_age
+ncases_age2[8] <- sum(ncases_age2[8:10])
+ncases_age2 <- ncases_age2[-(9:10)]
+
+nage_china2 <- nage_china
+nage_china2[8] <- sum(nage_china2[8:11])
+nage_china2 <- nage_china2[-(9:11)]
+
+## Now to check the overall hospitalization rate among infections estimate from this:
+n_infections <- ncases_age2 / p_inf_hosp_age
+n_infections
+sum(n_infections)
+sum(ncases_age2)
+
+# overall prop hospitalized
+sum(ncases_age2) / sum(n_infections)
+# age-adjusted hospitization rate is ~6%
+
+# double check with population structure
+sum(p_inf_hosp_age * (nage_china2 / sum(nage_china2)))
+  # so about 14% of cases are being hospitalized in china, due to age structure
+
+# # We will use this as the low capture scenario
+# p_inf_hosp_age_low <- p_inf_hosp_age
+# p_hosp_china_low <- sum(p_inf_hosp_age_low * (nage_china2 / sum(nage_china2)))
+# p_hosp_china_low
+```
+
+This seems about right. we will use these estimates.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### ~ Prop hospitalized - Kutupalong
+Now we need to apply the population structure of Kutupalong to estimate proportion hospitalized there.
+
+```{r}
+
+pop_age <- read_csv("data/age_kutupalong.csv")
+age_smooth <- smooth.spline(pop_age$mid, pop_age$tot_per_year)
+pr_age <- predict(age_smooth, data.frame(mid=0:89)) %>% as.data.frame()
+pr_age <- pr_age %>% rename(age=mid, prop=mid.1) %>% mutate(prop = prop / sum(pr_age$mid.1))
+plot(pr_age$age, pr_age$prop)
+points(pop_age$mid, pop_age$tot_per_year, col="blue", pch=20)
+
+# Get age by 10yr groups
+pr_age <- pr_age %>% mutate(age10 = floor(age/10)*10)
+pr_age10 <- pr_age %>% group_by(age10) %>% summarise(pr10 = sum(prop)) %>%
+    mutate(age = paste0(age10, "-", age10+9))
+pr_age10_kutupalong <- as.numeric(pr_age10$pr10)
+pr_age10_kutupalong[8] <- sum(pr_age10_kutupalong[8:9])
+pr_age10_kutupalong <- pr_age10_kutupalong[-9]
+names(pr_age10_kutupalong) <- 0:(length(pr_age10_kutupalong)-1)
+
+# Apply to Kutupalong population structure - LOW capture
+p_hosp_kutupalong_low <- sum(p_inf_hosp_age_low * pr_age10_kutupalong)
+p_hosp_kutupalong_high <- sum(p_inf_hosp_age_high[1:8] * pr_age10_kutupalong)
+print(p_hosp_kutupalong_low)
+print(p_hosp_kutupalong_high)
+
+p_hosp_kutupalong_low / p_hosp_china_low
+p_hosp_kutupalong_high / p_hosp_china_high
+
+
+```
+
+Based on this crude analysis, if we assume 75% of infections in those 70+ lead to hospitalization, and the odds of hospitalization given infection by age mirrors the odds of mortality by age, we find that the hospitalization rate in Kutupalong is likely to be between 4.9-9.2%, compared with 14.0-21.8% in China. From these estimates, it is reasonable to assume infections in Kutupalong are 35-43% as likely to result in a hositalization, as compared to China.

@@ -1,0 +1,79 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r setup, include=FALSE, message = F, warning = F, results = F}
+require(knitr)
+require(tidyverse)
+require(gridExtra)
+# require(rstan)
+library(RColorBrewer)
+library(RgoogleMaps)
+
+options(scipen = 999)
+knitr::opts_knit$set(root.dir = "..")
+knitr::opts_chunk$set(echo=TRUE)
+
+```
+
+
+
+## Available Data and Estimates    
+$~$ 
+
+### Shenzhen, China (Bi et al. 2020)
+```{r echo=FALSE}
+sym_dat <- data.frame(
+    age_cat=c("0-9","10-19","20-29","30-39","40-49","50-59","60-69","70+"),
+    mild=c(7,3,13,22,15,21,17,4),
+    moderate=c(13,9,21,64,40,46,49,12),
+    severe=c(0,0,0,1,5,7,20,2)
+) %>% mutate(total = mild+moderate+severe)
+
+print(sym_dat)
+
+
+fev_dat <- data.frame(
+    age_cat=c("0-9","10-19","20-29","30-39","40-49","50-59","60-69","70+"),
+    no=c(6,3,3,13,6,10,16,4),
+    yes=c(14,9,31,74,54,64,70,14)
+) %>% mutate(total = no+yes)
+print(fev_dat)
+```
+
+$~$ 
+
+### From Ian Miller's Github
+https://github.com/ianfmiller/covid19-burden-mapping/blob/master/mapping.US.R   
+
+```{r, echo=TRUE}
+p.infected<-.4 #ballpark estimate
+p.symptomatic<-.8 #ballpark estimate, same for all age classes
+hosp.rates<-c(.001,.003,.012,.032,.049,.102,.166,.243,.273) #data https://www.imperial.ac.uk/media/imperial-college/medicine/sph/ide/gida-fellowships/Imperial-College-COVID19-NPI-modelling-16-03-2020.pdf
+icu.rates.given.hosp<-c(.05,.05,.05,.05,.063,.122,.274,.432,.709) #data https://www.imperial.ac.uk/media/imperial-college/medicine/sph/ide/gida-fellowships/Imperial-College-COVID19-NPI-modelling-16-03-2020.pdf
+IFR <- c(.00002,.00006,.0003,.0008,.0015,.006,.022,.051,.093) #data https://www.imperial.ac.uk/media/imperial-college/medicine/sph/ide/gida-fellowships/Imperial-College-COVID19-NPI-modelling-16-03-2020.pdf
+
+```
+
+
+#### From Verity et al. 2020
+https://www.medrxiv.org/content/10.1101/2020.03.09.20033357v1.full.pdf
+
+```{r}
+sev_dat <- data.frame(
+    age_cat=c("0-9","10-19","20-29","30-39","40-49","50-59","60-69","70-79","80+"),
+    severe=c(0,1,49,124,154,222,201,133,51),
+    total =c(13,50,437,733,743,790,560,263,76),
+    
+) %>% mutate(total = mild+moderate+severe)
+
+
+
+```
+
+
+
+
