@@ -8,6 +8,8 @@
 ##' 
 ##' @return p, standardized probability for each GEOID
 ##'
+##' @import tidyverse
+##' 
 ##' @export
 
 get_p_standardized <- function(age_county_pop, p_vec, var_name){
@@ -27,7 +29,6 @@ get_p_standardized <- function(age_county_pop, p_vec, var_name){
 
 #### OLD ####
 
-library(tidyverse)
 
 ##' estimates probability of being a severe case by age from Shenzen data
 ##' results from this STAN model saved for easy use later on
