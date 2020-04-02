@@ -15,14 +15,14 @@
 ##'          - age_l
 ##'          - age_r
 ##'
+##' @import tidyverse
+##' @import tidycensus
+##' 
 ##' @export
 
 load_age_county_pop <- function(census_api_key,
                                 modeled_states,
                                 census_year){
-  
-  library(tidycensus)
-  library(tidyverse)
   
   census_api_key(census_api_key)
   
@@ -104,13 +104,14 @@ load_age_county_pop <- function(census_api_key,
 ##'          - age_r
 ##'          - agecat
 ##'
+##' @import tidyverse 
+##'
 ##' @export
 
 format_age_county_pop <- function(age_county_pop,
                                   age_lower = seq(0, 80, 10),
                                   age_upper = c(seq(9, 79, 10), 99),
                                   agecat_labels=NULL){
-  library(tidyverse)
   
   if(is.null(agecat_labels)){agecat_labels = paste0(age_lower, "_", age_upper)}
   

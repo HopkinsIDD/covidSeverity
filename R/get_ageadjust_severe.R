@@ -20,7 +20,7 @@ get_p_standardized <- function(age_county_pop, p_vec, var_name){
     GEOID <- p_age[,1]
     p_age <- as.matrix(p_age[,-1])
 
-    p_tmp <- sweep(p_age, 1, p_vec, "*")
+    p_tmp <- sweep(p_age, 2, p_vec, "*")
     p_stand <- rowSums(p_tmp)
     
     return(p_severe_)
