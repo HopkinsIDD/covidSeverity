@@ -127,7 +127,11 @@ format_age_county_pop <- function(age_county_pop,
                    NAME = NAME[1]) %>%
          mutate(age_l = age_lower[cat_l],
                 age_r = age_upper[cat_l],
-                agecat = agecat_labels[cat_l])
+                agecat = agecat_labels[cat_l]) %>%
+         group_by(GEOID) %>%
+         mutate(tot_pop = sum(estimate)) %>%
+         ungroup() %>%
+         mutate(page = estimate / tot_pop)
   
   return(tmp)
 }
