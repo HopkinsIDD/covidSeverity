@@ -8,6 +8,9 @@ Authors@R:
            email = "first.last@example.com",
            comment = c(ORCID = "YOUR-ORCID-ID"))
 Description: What the package does (one paragraph).
+Imports:
+    tidyverse,
+    tidycensus
 License: What license it uses
 Encoding: UTF-8
 LazyData: true

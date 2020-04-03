@@ -5,14 +5,11 @@ if(!require('reshape2')) install.packages('reshape2'); library(reshape2)
 if(!require('devtools')) install.packages('devtools'); library(devtools)
 if(!require('ggpubr')) install.packages('ggpubr'); library(ggpubr)
 if(!require('cowplot')) install.packages('cowplot'); library(cowplot)
-if(!require('dplyr')) install.packages('dplyr'); library(dplyr)
 if(!require('boot')) install.packages('boot'); library(boot)
 if(!require('caret')) install.packages('caret'); library(caret)
 library(brms)
-library(ggplot2)
 library(gridExtra)
 library(lme4)
-library(readr)
 library(tidyverse)
 library(rstan)
 library(sjstats)
@@ -84,7 +81,7 @@ CFR.Age.grouped %>% filter(Group==">=20y") %>% summarize(median=median(CFR),  ql
 tot.cases <- sum(CFR.Age.grouped$Cases)
 CFR.Age.grouped <- CFR.Age.grouped %>% group_by(Ref) %>% mutate(Study.Wt = sum(Cases)/tot.cases) %>% ungroup()
 CFR.Age.grouped <- CFR.Age.grouped %>% group_by(Group) %>% mutate(Group.Tot = sum(Cases)) %>% ungroup()
-CFR.Age.grouped <- CFR.Age.grouped %>% mutate(Group.Wt = Cases/Group.Tot, 
+CFR.Age.grouped <- CFR.Age.grouped %>% mutate(Group.Wt = Cases/Group.Tot,
                                               CFR.contr.grp = CFR*Group.Wt,
                                               CFR.contr.study = CFR*Study.Wt)
 # Calc weighted group means
@@ -93,7 +90,7 @@ CFR.Age.grouped %>% group_by(Group) %>% summarize(sum(CFR.contr.study, na.rm = T
 
 # Convert to long
 CFR.Age.grouped <- CFR.Age.grouped %>% mutate(row = 1:nrow(CFR.Age.grouped))
-CFR.Age.long <- CFR.Age.grouped %>% group_by(row) %>% 
+CFR.Age.long <- CFR.Age.grouped %>% group_by(row) %>%
   do({ left_join(data_frame(row=.$row, died = c(rep(0,.$Cases-.$Deaths), rep(1,.$Deaths))),.,by='row') })
 
 
@@ -160,12 +157,12 @@ r2(mod)
 # Vaccination & CFR - brms Estimation -------------------------------------------------------
 #........................................................................................
 
-mod_brms <- brms::brm(died ~ Group + (1|LocDecade), 
-                 data=CFR.Age.long, 
+mod_brms <- brms::brm(died ~ Group + (1|LocDecade),
+                 data=CFR.Age.long,
                  family = 'bernoulli',
                  prior = set_prior('normal(0, 100)'),
                  iter = 100,
-                 chains = 4, 
+                 chains = 4,
                  cores = 4
                  )
 summary(mod_brms)
@@ -175,7 +172,7 @@ icc(mod_brms, ppd=TRUE)
 r2(mod_brms)
 
 make_stancode(died ~ Group + (1|LocDecade),
-              data=CFR.Age.long, 
+              data=CFR.Age.long,
               family = 'binomial',
               prior = set_prior('normal(0, 100)'))
 
@@ -213,7 +210,7 @@ load(file="source/CFR_mixed_logistic_compiled.Rdata")
 rstan_options(auto_write=TRUE)
 options (mc.cores=3) # Run on multiple cores
 
-CFR.Age.stan.fit <- sampling(ret_sm, warmup=500, iter=1000, seed=123, data=CFR.Age.stan, 
+CFR.Age.stan.fit <- sampling(ret_sm, warmup=500, iter=1000, seed=123, data=CFR.Age.stan,
                              chains=3, control=list(adapt_delta=.95))
 
 save(CFR.Age.stan.fit, file='results/CFR.Age.stan.Study.Rdata')
