@@ -137,3 +137,27 @@ format_age_county_pop <- function(age_county_pop,
   return(tmp)
 }
 
+
+##' Function to make population data into matrix for multiplication
+##'
+##' @param age_county_pop_formatted formatted ACS data from format_age_county_pop
+##' 
+##' @return a listof GEOID vector, agecat labels, and p_age matrix
+##' 
+##' @import tidyverse 
+##'
+##' @export
+make_age_matrix <- function(age_county_pop_formatted){
+  p_age <- age_county_pop_formatted %>% 
+           select(GEOID, agecat, page) %>%
+           pivot_wider(names_from = agecat, values_from = page)
+  GEOID <- p_age[,1]
+  agecat <- names(p_age)[-1]
+  p_age <- as.matrix(p_age[,-1])
+  return(list(GEOID=GEOID, agecat=agecat, p_age=p_age))
+}
+
+## examples
+## xx <- load_age_county_pop(census_api_key = "c235e1b5620232fab506af060c5f8580604d89c1", modeled_states = state.abb, census_year = 2018)
+## xx <- format_age_county_pop(xx)
+## tmp <- make_age_matrix(xx)
