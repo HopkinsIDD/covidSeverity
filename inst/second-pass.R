@@ -77,11 +77,11 @@ age_cat_maxs <- c(9,19,29,39,49,59,69,79,99)
 if(nrow(expanded_dat %>%
         filter(param=="pSymp_Inf"))>10000){
   symp_dat <- expanded_dat %>%
-    filter(param=="pSymp_Inf")
-} else{
-  symp_dat <- expanded_dat %>%
     filter(param=="pSymp_Inf") %>%
     sample_n(1e4)
+} else{
+  symp_dat <- expanded_dat %>%
+    filter(param=="pSymp_Inf")
 }
 
 symp_inf_est <- sampling(age_stan,
@@ -111,7 +111,7 @@ p_symp_inf_age <- extract(symp_inf_est, par="prob_age")[[1]]
 apply(p_symp_inf_age, 2, median)
 rm(symp_inf_est)
 
-if(filter(expanded_dat, param=="pDeath_Symp") > 1e4){
+if(filter(expanded_dat, param=="pDeath_Symp") %>% nrow() > 1e4){
   death_dat <- expanded_dat %>%
     filter(param=="pDeath_Symp") %>%
     sample_n(1e4)
@@ -119,9 +119,9 @@ if(filter(expanded_dat, param=="pDeath_Symp") > 1e4){
   death_dat <- expanded_dat %>%
     filter(param=="pDeath_Symp")
 }
-# library(brms)
-# death_stan_code <- make_stancode(x ~ s(ageL, bs="cs") + (1|study), data=death_dat, family=bernoulli(), threshold="flexible")
-# death_stan_data <- make_standata(x ~ s(ageL, bs="cs") + (1|study), data=death_dat, family=bernoulli(), threshold="flexible")
+library(brms)
+death_stan_code <- make_stancode(x ~ s(ageL, bs="cs", k=3) + (1|study), data=death_dat, family=bernoulli(), threshold="flexible")
+death_stan_data <- make_standata(x ~ s(ageL, bs="cs", k=3) + (1|study), data=death_dat, family=bernoulli(), threshold="flexible")
 
 death_symp_est <- sampling(age_stan,
                            data=list(N=nrow(death_dat),
