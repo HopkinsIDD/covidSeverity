@@ -27,7 +27,7 @@ raw_params <- age_specific_data %>%
                                   round(value*(1-value)*(qnorm(.975)/(valueR-value))^2),
                                   1000)),
                     N),
-         X = ifelse(is.na(X),round(N*value),X),
+         X = ifelse(is.na(X),ceiling(N*value),X),
          age_rng = paste0(ageL,"_",ageR))
 
 ## reallocate cases to new age groups
@@ -68,9 +68,9 @@ for(i in 1:num_params){
 expanded_dat <- expanded_dat %>%
   mutate(age_cat=cut(age,c(seq(0,80,by=10),100),right = FALSE),
          age_grp=as.factor(age_cat) %>% as.numeric)# %>%
-  # group_by(param, study, age_cat, age_grp) %>%
-  # summarize(X=sum(x),
-  #           N=n())
+# group_by(param, study, age_cat, age_grp) %>%
+# summarize(X=sum(x),
+#           N=n())
 
 
 age_cat_mins <- c(0,10,20,30,40,50,60,70,80)
@@ -81,29 +81,65 @@ age_cat_maxs <- c(9,19,29,39,49,59,69,79,99)
 #     filter(param=="pSymp_Inf") %>%
 #     sample_n(1e4)
 # } else{
-  symp_dat <- expanded_dat %>%
-    filter(param=="pSymp_Inf")
+
 # }
 
-studies <- unique(symp_dat$study)
-symp_dat_preds <- c()
-for(i in studies){
-  tmp <- filter(symp_dat, study==i)
-  symp_dat_preds <- bind_rows(symp_dat_preds,
-                              tibble(study=i,
-                                     age=min(tmp$age):max(tmp$age),
-                                     wt=nrow(tmp)/nrow(symp_dat)))
+
+est_age_spec_param <- function(expanded_dat,
+                               param_to_est="pSymp_Inf",
+                               age_cats=c(seq(0,80,by=10),100)){
+  param_dat <- expanded_dat %>%
+    filter(param==param_to_est)
+  studies <- unique(param_dat$study)
+  param_pred_dat <- c()
+  for(i in studies){
+    tmp <- filter(param_dat, study==i)
+    param_pred_dat <- bind_rows(param_pred_dat,
+                                tibble(study=i,
+                                       age=min(tmp$age):max(tmp$age),
+                                       wt=nrow(tmp)/nrow(param_dat)))
+  }
+
+  param_gam <- gam(x~s(age, bs="cs") + s(study, bs="re"),
+                   data=param_dat, family=binomial)
+
+  pred_terms <- predict(param_gam, param_pred_dat, type="lpmatrix")
+
+  coef_perms <- rmvn(100, coef(param_gam), param_gam$Vp)
+
+  preds <-  (coef_perms %*% t(pred_terms)) %>%
+    as_tibble() %>%
+    pivot_longer(cols=everything(),
+                 names_to="pred",
+                 values_to="est") %>%
+    mutate(pred=as.numeric(pred)) %>%
+    group_by(pred) %>%
+    summarize(logit_mean=mean(est),
+              logit_var=var(est))
+  # qplot(x=param_pred_dat$age, y=plogis(preds$logit_mean), color=factor(param_pred_dat$study)) + theme(legend.position="none")
+
+
+  param_preds <- param_pred_dat %>%
+    mutate(logit_mean=preds$logit_mean,
+           logit_var=preds$logit_var,
+           age_grp=cut(age,age_cats,right = FALSE)) %>%
+    group_by(age_grp, age) %>%
+    summarize(wt_logit_mean=weighted.mean(logit_mean, wt),
+              wt_logit_var=weighted.mean(logit_mean^2+logit_var, wt)-weighted.mean(logit_mean, wt)^2) %>%
+    group_by(age_grp) %>%
+    summarize(logit_mean=mean(wt_logit_mean),
+              logit_sd=sqrt(mean(wt_logit_mean^2+wt_logit_var)-mean(wt_logit_mean)^2))
+  # ggplot(data=param_preds, aes(x=age_grp)) +
+  #   geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
+  #   geom_point(aes(y=plogis(logit_mean)))
+  return(param_preds)
 }
 
-symp_gam <- gam(x~s(age, bs="cs") + s(study, bs="re"),
-                data=symp_dat, family=binomial)
+p_symp <- est_age_spec_param(expanded_dat)
+ggplot(data=p_symp, aes(x=age_grp)) +
+  geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
+  geom_point(aes(y=plogis(logit_mean)))
 
-symp_dat_preds$preds <- predict(symp_gam, symp_dat_preds, type="response")
-
-p_symp <- symp_dat_preds %>%
-  group_by(age) %>%
-  summarize(x=weighted.mean(preds, wt))
-qplot(data=p_symp, x=age, y=x)
 ## get the code and data from brms to make
 # symp_stan_code <- make_stancode(x ~ s(age, bs="cs", k=3) + (1|study),
 #                                 data=symp_dat_preds, family=bernoulli())
@@ -160,29 +196,12 @@ qplot(data=p_symp, x=age, y=x)
 #     filter(param=="pDeath_Symp") %>%
 #     sample_n(1e4)
 # } else{
-  death_dat <- expanded_dat %>%
-    filter(param=="pDeath_Symp")
-# }
 
-studies <- unique(death_dat$study)
-death_dat_preds <- c()
-for(i in studies){
-  tmp <- filter(death_dat, study==i)
-  death_dat_preds <- bind_rows(death_dat_preds,
-                              tibble(study=i,
-                                     age=min(tmp$age):max(tmp$age),
-                                     wt=nrow(tmp)/nrow(death_dat)))
-}
+p_death <- est_age_spec_param(expanded_dat, "pDeath_Symp")
+ggplot(data=p_death, aes(x=age_grp)) +
+  geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
+  geom_point(aes(y=plogis(logit_mean)))
 
-death_gam <- gam(x~s(age, bs="cs") + s(study, bs="re"),
-                data=death_dat, family=binomial)
-
-death_dat_preds$preds <- predict(death_gam, death_dat_preds, type="response")
-
-p_death <- death_dat_preds %>%
-  group_by(age) %>%
-  summarize(x=weighted.mean(preds, wt))
-qplot(data=p_death, x=age, y=x)
 #
 # death_stan_data <- make_standata(x ~ s(age, bs="cs", k=3) + (1|study),
 #                                  data=death_dat, family=bernoulli())
@@ -218,29 +237,12 @@ qplot(data=p_death, x=age, y=x)
 #     filter(param=="pHosp_Symp") %>%
 #     sample_n(1e4)
 # } else{
-  hosp_dat <- expanded_dat %>%
-    filter(param=="pHosp_Symp")
-# }
 
-studies <- unique(hosp_dat$study)
-hosp_dat_preds <- c()
-for(i in studies){
-  tmp <- filter(hosp_dat, study==i)
-  hosp_dat_preds <- bind_rows(hosp_dat_preds,
-                               tibble(study=i,
-                                      age=min(tmp$age):max(tmp$age),
-                                      wt=nrow(tmp)/nrow(hosp_dat)))
-}
+p_hosp <- est_age_spec_param(expanded_dat, "pHosp_Symp")
+ggplot(data=p_hosp, aes(x=age_grp)) +
+  geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
+  geom_point(aes(y=plogis(logit_mean)))
 
-hosp_gam <- gam(x~s(age, bs="cs") + s(study, bs="re"),
-                 data=hosp_dat, family=binomial)
-
-hosp_dat_preds$preds <- predict(hosp_gam, hosp_dat_preds, type="response")
-
-p_hosp <- hosp_dat_preds %>%
-  group_by(age) %>%
-  summarize(x=weighted.mean(preds, wt))
-qplot(data=p_hosp, x=age, y=x)
 # hosp_stan_data <- make_standata(x ~ s(age, bs="cs", k=3) + (1|study),
 #                                  data=hosp_dat, family=bernoulli())
 #
@@ -275,29 +277,12 @@ qplot(data=p_hosp, x=age, y=x)
 #     filter(param=="pICU_Hosp") %>%
 #     sample_n(1e4)
 # } else{
-  icu_dat <- expanded_dat %>%
-    filter(param=="pICU_Hosp")
-# }
 
-  studies <- unique(icu_dat$study)
-  icu_dat_preds <- c()
-  for(i in studies){
-    tmp <- filter(icu_dat, study==i)
-    icu_dat_preds <- bind_rows(icu_dat_preds,
-                                tibble(study=i,
-                                       age=min(tmp$age):max(tmp$age),
-                                       wt=nrow(tmp)/nrow(icu_dat)))
-  }
+p_icu <- est_age_spec_param(expanded_dat, "pICU_Hosp")
+ggplot(data=p_icu, aes(x=age_grp)) +
+  geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
+  geom_point(aes(y=plogis(logit_mean)))
 
-  icu_gam <- gam(x~s(age, bs="cs") + s(study, bs="re"),
-                  data=icu_dat, family=binomial)
-
-  icu_dat_preds$preds <- predict(icu_gam, icu_dat_preds, type="response")
-
-  p_icu <- icu_dat_preds %>%
-    group_by(age) %>%
-    summarize(x=weighted.mean(preds, wt))
-  qplot(data=p_icu, x=age, y=x)
 #
 # icu_stan_data <- make_standata(x ~ s(age, bs="cs", k=3) + (1|study),
 #                                 data=icu_dat, family=bernoulli())
