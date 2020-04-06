@@ -72,7 +72,7 @@ ggplot(data=p_icu, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
   geom_point(aes(y=plogis(logit_mean)))
 
-p_vent <- est_age_spec_param(expanded_dat, "pVent_Symp")
+p_vent <- est_age_spec_param(expanded_dat, "pVent_Symp", age_cats=c(0,100))
 ggplot(data=p_vent, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
   geom_point(aes(y=plogis(logit_mean)))
@@ -87,3 +87,27 @@ p_death_symp_age
 p_icu_hosp_age
 ## probability ventilator given symptomatic
 p_vent_symp
+
+load("data/USpop_geoid_agecat.Rdata")
+
+county_symp <- t(USpop_geoid_agecat$p_age) %>%
+  as_tibble() %>%
+  bind_cols(p_symp) %>%
+  pivot_longer(cols=starts_with("V"),
+               names_to="county",
+               values_to="wt") %>%
+  group_by(county) %>%
+  summarize(wt_logit_mean=weighted.mean(logit_mean, wt),
+            wt_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2))
+
+county_death <- t(USpop_geoid_agecat$p_age) %>%
+  as_tibble() %>%
+  bind_cols(p_death) %>%
+  pivot_longer(cols=starts_with("V"),
+               names_to="county",
+               values_to="wt") %>%
+  group_by(county) %>%
+  summarize(wt_logit_mean=weighted.mean(logit_mean, wt),
+            wt_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2))
+
+summary(county_death)
