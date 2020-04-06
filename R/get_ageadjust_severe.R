@@ -206,22 +206,34 @@ est_age_spec_param <- function(expanded_dat,
   }
   param_dat <- expanded_dat %>%
     filter(param==param_to_est)
+
   studies <- unique(param_dat$study)
+  num_studies <- length(studies)
   param_pred_dat <- c()
-  for(i in studies){
-    tmp <- filter(param_dat, study==i)
+  for(i in 1:num_studies){
+    tmp <- filter(param_dat, study==studies[i])
     param_pred_dat <- bind_rows(param_pred_dat,
-                                tibble(study=i,
+                                tibble(study=studies[i],
                                        age=min(tmp$age):max(tmp$age),
                                        wt=nrow(tmp)/nrow(param_dat)))
   }
+  if(num_studies > 1){
+    param_gam <- gam(x~ s(age, bs="cs") + s(study, bs="re"),
+                     data=param_dat %>% mutate(study=as.factor(study)),
+                     family=binomial())
 
-  param_gam <- gam(x~s(age, bs="cs") + s(study, bs="re"),
-                   data=param_dat, family=binomial)
+    pred_terms <- predict(param_gam,
+                          param_pred_dat %>% mutate(study=as.factor(study)),
+                          type="lpmatrix")
+  } else{
+    param_gam <- gam(x~s(age, bs="cs"),
+                     data=param_dat, family=binomial())
 
+    pred_terms <- predict(param_gam, param_pred_dat, type="lpmatrix")
+  }
   pred_terms <- predict(param_gam, param_pred_dat, type="lpmatrix")
 
-  coef_perms <- rmvn(100, coef(param_gam), param_gam$Vp)
+  coef_perms <- rmvn(1000, coef(param_gam), param_gam$Vp)
 
   preds <-  (coef_perms %*% t(pred_terms)) %>%
     as_tibble() %>%
@@ -231,20 +243,20 @@ est_age_spec_param <- function(expanded_dat,
     mutate(pred=as.numeric(pred)) %>%
     group_by(pred) %>%
     summarize(logit_mean=mean(est),
-              logit_var=var(est))
+              logit_sd=sd(est))
   # qplot(x=param_pred_dat$age, y=plogis(preds$logit_mean), color=factor(param_pred_dat$study)) + theme(legend.position="none")
 
 
   param_preds <- param_pred_dat %>%
     mutate(logit_mean=preds$logit_mean,
-           logit_var=preds$logit_var,
+           logit_sd=preds$logit_sd,
            age_grp=cut(age,age_cats,right = FALSE)) %>%
     group_by(age_grp, age) %>%
     summarize(wt_logit_mean=weighted.mean(logit_mean, wt),
-              wt_logit_var=weighted.mean(logit_mean^2+logit_var, wt)-weighted.mean(logit_mean, wt)^2) %>%
+              wt_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2)) %>%
     group_by(age_grp) %>%
     summarize(logit_mean=mean(wt_logit_mean),
-              logit_sd=sqrt(mean(wt_logit_mean^2+wt_logit_var)-mean(wt_logit_mean)^2))
+              logit_sd=sqrt(mean(wt_logit_mean^2+wt_logit_sd^2)-mean(wt_logit_mean)^2))
   # ggplot(data=param_preds, aes(x=age_grp)) +
   #   geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
   #   geom_point(aes(y=plogis(logit_mean)))

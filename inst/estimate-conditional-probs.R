@@ -51,44 +51,59 @@ for(i in 1:num_params){
     }
   }
 }
-
+## make proportion symptomatic given infected
 p_symp <- est_age_spec_param(expanded_dat)
 ggplot(data=p_symp, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
   geom_point(aes(y=plogis(logit_mean)))
 
+## CFR
 p_death <- est_age_spec_param(expanded_dat, "pDeath_Symp")
 ggplot(data=p_death, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
   geom_point(aes(y=plogis(logit_mean)))
 
+## hospitalization rate amongst symptomatic
 p_hosp <- est_age_spec_param(expanded_dat, "pHosp_Symp")
 ggplot(data=p_hosp, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
   geom_point(aes(y=plogis(logit_mean)))
 
+## ICU rate amongst hospitalized
 p_icu <- est_age_spec_param(expanded_dat, "pICU_Hosp")
 ggplot(data=p_icu, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
   geom_point(aes(y=plogis(logit_mean)))
 
-p_vent <- est_age_spec_param(expanded_dat, "pVent_Symp", age_cats=c(0,100))
+## ventilation rate amongst symptomatic
+p_vent <- est_age_spec_param(expanded_dat, "pVent_ICU")
 ggplot(data=p_vent, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
   geom_point(aes(y=plogis(logit_mean)))
-
-## probability symptomatic
-p_symp_inf_age
-## probability hospitalized given symptomatic
-p_hosp_symp_age
-## probability death given symptomatic
-p_death_symp_age
-## probability ICU given hospitalized
-p_icu_hosp_age
-## probability ventilator given symptomatic
-p_vent_symp
+#
+# ## probability symptomatic
+# p_symp_inf_age
+# ## probability hospitalized given symptomatic
+# p_hosp_symp_age
+# ## probability death given symptomatic
+# p_death_symp_age
+# ## probability ICU given hospitalized
+# p_icu_hosp_age
+# ## probability ventilator given symptomatic
+# p_vent_symp
 
 load("data/USpop_geoid_agecat.Rdata")
+
+county_pops <- t(USpop_geoid_agecat$est_age) %>%
+  as_tibble() %>%
+  setNames(USpop_geoid_agecat$GEOID[,,drop=T]) %>%
+  pivot_longer(cols=1:(nrow(USpop_geoid_agecat$GEOID)),
+               names_to="county",
+               values_to="age_pop") %>%
+  group_by(county) %>%
+  summarize(pop=sum(age_pop))
+
+# county_params <-
 
 county_symp <- t(USpop_geoid_agecat$p_age) %>%
   as_tibble() %>%
@@ -97,9 +112,10 @@ county_symp <- t(USpop_geoid_agecat$p_age) %>%
   pivot_longer(cols=1:(nrow(USpop_geoid_agecat$GEOID)),
                names_to="county",
                values_to="wt") %>%
+  left_join(county_pops) %>%
   group_by(county) %>%
-  summarize(wt_logit_mean=weighted.mean(logit_mean, wt),
-            wt_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2))
+  summarize(symp_logit_mean=weighted.mean(logit_mean, wt),
+            symp_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2)/sqrt(pop[1]))
 
 county_death <- t(USpop_geoid_agecat$p_age) %>%
   as_tibble() %>%
@@ -108,8 +124,55 @@ county_death <- t(USpop_geoid_agecat$p_age) %>%
   pivot_longer(cols=1:(nrow(USpop_geoid_agecat$GEOID)),
                names_to="county",
                values_to="wt") %>%
+  left_join(county_pops) %>%
   group_by(county) %>%
-  summarize(wt_logit_mean=weighted.mean(logit_mean, wt),
-            wt_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2))
+  summarize(death_logit_mean=weighted.mean(logit_mean, wt),
+            death_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2)/sqrt(mean(pop)))
 
-summary(county_death)
+county_hosp <- t(USpop_geoid_agecat$p_age) %>%
+  as_tibble() %>%
+  setNames(USpop_geoid_agecat$GEOID[,,drop=T]) %>%
+  bind_cols(p_hosp) %>%
+  pivot_longer(cols=1:(nrow(USpop_geoid_agecat$GEOID)),
+               names_to="county",
+               values_to="wt") %>%
+  left_join(county_pops) %>%
+  group_by(county) %>%
+  summarize(hosp_logit_mean=weighted.mean(logit_mean, wt),
+            hosp_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2)/sqrt(mean(pop)))
+
+
+county_icu <- t(USpop_geoid_agecat$p_age) %>%
+  as_tibble() %>%
+  setNames(USpop_geoid_agecat$GEOID[,,drop=T]) %>%
+  bind_cols(p_icu) %>%
+  pivot_longer(cols=1:(nrow(USpop_geoid_agecat$GEOID)),
+               names_to="county",
+               values_to="wt") %>%
+  left_join(county_pops) %>%
+  group_by(county) %>%
+  summarize(icu_logit_mean=weighted.mean(logit_mean, wt),
+            icu_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2)/sqrt(mean(pop)))
+
+
+county_vent <- t(USpop_geoid_agecat$p_age) %>%
+  as_tibble() %>%
+  setNames(USpop_geoid_agecat$GEOID[,,drop=T]) %>%
+  bind_cols(p_vent) %>%
+  pivot_longer(cols=1:(nrow(USpop_geoid_agecat$GEOID)),
+               names_to="county",
+               values_to="wt") %>%
+  left_join(county_pops) %>%
+  group_by(county) %>%
+  summarize(vent_logit_mean=weighted.mean(logit_mean, wt),
+            vent_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2)/sqrt(mean(pop)))
+
+county_params <- left_join(county_symp, county_death) %>%
+  left_join(county_hosp) %>%
+  left_join(county_icu) %>%
+  mutate(p_symp_inf=plogis(symp_logit_mean),
+         p_death_symp=plogis(death_logit_mean),
+         p_death_inf=p_death_symp*p_symp_inf,
+         p_hosp_symp=plogis(hosp_logit_mean),
+         p_hosp_inf=p_hosp_symp*p_symp_inf)
+

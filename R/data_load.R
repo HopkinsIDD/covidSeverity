@@ -6,7 +6,7 @@
 ##' @param census_api_key census API key required for tidycensus
 ##' @param modeled_states states for which to pull data
 ##' @param census_year year for which to generate data
-##' 
+##'
 ##' @return a data frame with columns
 ##'          - GEOID
 ##'          - agecat
@@ -17,15 +17,15 @@
 ##'
 ##' @import tidyverse
 ##' @import tidycensus
-##' 
+##'
 ##' @export
 
 load_age_county_pop <- function(census_api_key,
                                 modeled_states,
                                 census_year){
-  
+
   census_api_key(census_api_key)
-  
+
   tmp <- get_acs(geography = "county",
                 variables = c(age_0004_M="B01001_003",
                               age_0509_M="B01001_004",
@@ -94,7 +94,7 @@ load_age_county_pop <- function(census_api_key,
 ##' @param age_lower lower limit of desired age categories
 ##' @param age_upper upper limit of desired age categories
 ##' @param agecat_labels if NULL, will be paste0(age_lower, "_", age_upper)
-##' 
+##'
 ##' @return a data frame with columns
 ##'          - GEOID
 ##'          - cat_l (index of age category)
@@ -104,7 +104,7 @@ load_age_county_pop <- function(census_api_key,
 ##'          - age_r
 ##'          - agecat
 ##'
-##' @import tidyverse 
+##' @import tidyverse
 ##'
 ##' @export
 
@@ -112,17 +112,17 @@ format_age_county_pop <- function(age_county_pop,
                                   age_lower = seq(0, 80, 10),
                                   age_upper = c(seq(9, 79, 10), 99),
                                   agecat_labels=NULL){
-  
+
   if(is.null(agecat_labels)){agecat_labels = paste0(age_lower, "_", age_upper)}
-  
+
   tmp <- age_county_pop
   tmp$cat_l <- apply(tmp, 1, function(x) max(which(age_lower<=as.numeric(x['age_l']))))
   tmp$cat_r <- apply(tmp, 1, function(x) which(age_upper>=as.numeric(x['age_r']))[1])
-  
+
   test <- (tmp$cat_l==tmp$cat_r)
   if(sum(!test)>0){ stop("age categories are not inclusive of ACS categories") }
-  
-  tmp <- tmp %>% 
+
+  tmp <- tmp %>%
          group_by(GEOID, cat_l) %>%
          summarize(estimate = sum(estimate),
                    NAME = NAME[1]) %>%
@@ -133,7 +133,7 @@ format_age_county_pop <- function(age_county_pop,
          mutate(tot_pop = sum(estimate)) %>%
          ungroup() %>%
          mutate(page = estimate / tot_pop)
-  
+
   return(tmp)
 }
 
@@ -141,23 +141,26 @@ format_age_county_pop <- function(age_county_pop,
 ##' Function to make population data into matrix for multiplication
 ##'
 ##' @param age_county_pop_formatted formatted ACS data from format_age_county_pop
-##' 
+##'
 ##' @return a listof GEOID vector, agecat labels, and p_age matrix
-##' 
-##' @import tidyverse 
+##'
+##' @import tidyverse
 ##'
 ##' @export
 make_age_matrix <- function(age_county_pop_formatted){
-  p_age <- age_county_pop_formatted %>% 
+  p_age_dat <- age_county_pop_formatted %>%
            select(GEOID, agecat, page) %>%
-           pivot_wider(names_from = agecat, values_from = page)
-  GEOID <- p_age[,1]
-  agecat <- names(p_age)[-1]
-  p_age <- as.matrix(p_age[,-1])
-  return(list(GEOID=GEOID, agecat=agecat, p_age=p_age))
-}
+           pivot_wider(names_from = agecat,
+                       values_from = page)
+  GEOID <- p_age_dat[,1]
+  agecat <- names(p_age_dat)[-1]
+  p_age <- as.matrix(p_age_dat[,-1])
+  est_age <- age_county_pop_formatted %>%
+    select(GEOID, agecat, estimate) %>%
+    pivot_wider(names_from = agecat,
+                values_from = estimate) %>%
+    select(-GEOID) %>%
+    as.matrix()
 
-## examples
-## xx <- load_age_county_pop(census_api_key = "c235e1b5620232fab506af060c5f8580604d89c1", modeled_states = state.abb, census_year = 2018)
-## xx <- format_age_county_pop(xx)
-## tmp <- make_age_matrix(xx)
+  return(list(GEOID=GEOID, agecat=agecat, p_age=p_age, est_age=est_age))
+}
