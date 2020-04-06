@@ -92,8 +92,9 @@ load("data/USpop_geoid_agecat.Rdata")
 
 county_symp <- t(USpop_geoid_agecat$p_age) %>%
   as_tibble() %>%
+  setNames(USpop_geoid_agecat$GEOID[,,drop=T]) %>%
   bind_cols(p_symp) %>%
-  pivot_longer(cols=starts_with("V"),
+  pivot_longer(cols=1:(nrow(USpop_geoid_agecat$GEOID)),
                names_to="county",
                values_to="wt") %>%
   group_by(county) %>%
@@ -102,8 +103,9 @@ county_symp <- t(USpop_geoid_agecat$p_age) %>%
 
 county_death <- t(USpop_geoid_agecat$p_age) %>%
   as_tibble() %>%
+  setNames(USpop_geoid_agecat$GEOID[,,drop=T]) %>%
   bind_cols(p_death) %>%
-  pivot_longer(cols=starts_with("V"),
+  pivot_longer(cols=1:(nrow(USpop_geoid_agecat$GEOID)),
                names_to="county",
                values_to="wt") %>%
   group_by(county) %>%
