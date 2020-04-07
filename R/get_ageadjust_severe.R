@@ -199,8 +199,11 @@ get_p_standardized <- function(age_county_pop, p_vec, var_name){
 #'
 #' @examples
 est_age_spec_param <- function(expanded_dat,
-                               param_to_est="pSymp_Inf",
-                               age_cats=c(seq(0,80,by=10),100)){
+                               param_to_est="p_symp_inf",
+                               age_cats=c(seq(0,80,by=10),100),
+                               n_preds,
+                               study_wt="none" #c("n", "root_n", "equal"))
+                               ) {
   if(!(param_to_est %in% expanded_dat$param)){
     stop("param_to_est must exist within expanded_dat$param")
   }
@@ -209,13 +212,23 @@ est_age_spec_param <- function(expanded_dat,
 
   studies <- unique(param_dat$study)
   num_studies <- length(studies)
-  param_pred_dat <- c()
-  for(i in 1:num_studies){
-    tmp <- filter(param_dat, study==studies[i])
-    param_pred_dat <- bind_rows(param_pred_dat,
-                                tibble(study=studies[i],
-                                       age=min(tmp$age):max(tmp$age),
-                                       wt=nrow(tmp)/nrow(param_dat)))
+  if(study_wt=="none"){
+    param_pred_dat <- tibble(study=as.factor(1),
+                             age=0:99,
+                             wt=1)
+  } else{
+    param_pred_dat <- c()
+    for(i in 1:num_studies){
+      tmp <- filter(param_dat, study==studies[i])
+      param_pred_dat <- bind_rows(param_pred_dat,
+                                  tibble(study=studies[i],
+                                         age=min(tmp$age):max(tmp$age),
+                                         wt=ifelse(study_wt=="n",
+                                                   nrow(tmp)/nrow(param_dat),
+                                                   ifelse(study_wt=="root_n",
+                                                          sqrt(nrow(tmp)),
+                                                          1/num_studies))))
+    }
   }
   if(num_studies > 1){
     param_gam <- gam(x~ s(age, bs="cs") + s(study, bs="re"),
@@ -231,34 +244,142 @@ est_age_spec_param <- function(expanded_dat,
 
     pred_terms <- predict(param_gam, param_pred_dat, type="lpmatrix")
   }
-  pred_terms <- predict(param_gam, param_pred_dat, type="lpmatrix")
 
-  coef_perms <- rmvn(1000, coef(param_gam), param_gam$Vp)
+  coef_perms <- rmvn(n_preds, coef(param_gam), param_gam$Vp)
 
-  preds <-  (coef_perms %*% t(pred_terms)) %>%
+  if(study_wt=="none"){
+    preds <-  t(coef_perms[,1:(ncol(coef_perms)-num_studies)] %*%
+                  t(pred_terms[,1:(ncol(coef_perms)-num_studies)])) %>%
+      as_tibble() %>%
+      bind_cols(param_pred_dat) %>%
+      pivot_longer(cols=starts_with("V"),
+                   names_to="pred",
+                   values_to="est") %>%
+      group_by(age, pred) %>%
+      summarize(wt_est=weighted.mean(plogis(est), wt)) %>%
+      mutate(age_grp=cut(age, age_cats, right=F)) %>%
+      group_by(age_grp,pred) %>%
+      summarize(est=mean(wt_est)) %>%
+      ungroup() %>%
+      pivot_wider(names_from=pred,
+                  values_from=est) %>%
+      select(-age_grp) %>%
+      as.matrix()
+  } else{
+    preds <-  t(coef_perms %*% t(pred_terms)) %>%
+      as_tibble() %>%
+      bind_cols(param_pred_dat) %>%
+      pivot_longer(cols=starts_with("V"),
+                   names_to="pred",
+                   values_to="est") %>%
+      group_by(age, pred) %>%
+      summarize(wt_est=weighted.mean(plogis(est), wt)) %>%
+      mutate(age_grp=cut(age, age_cats, right=F)) %>%
+      group_by(age_grp,pred) %>%
+      summarize(est=mean(wt_est)) %>%
+      ungroup() %>%
+      pivot_wider(names_from=pred,
+                  values_from=est) %>%
+      select(-age_grp) %>%
+      as.matrix()
+  }
+
+  pred_summary <- preds %>%
     as_tibble() %>%
-    pivot_longer(cols=everything(),
+    mutate(age_grp=cut(age_cats[1:(length(age_cats)-1)], age_cats, right=F)) %>%
+    pivot_longer(cols=starts_with("V"),
                  names_to="pred",
                  values_to="est") %>%
-    mutate(pred=as.numeric(pred)) %>%
-    group_by(pred) %>%
-    summarize(logit_mean=mean(est),
-              logit_sd=sd(est))
+    group_by(age_grp) %>%
+    summarize(est_med=median(est),
+              est_lb=quantile(est, probs=.025),
+              est_ub=quantile(est, probs=.975))
+  colnames(pred_summary) <- gsub("est", param_to_est, colnames(pred_summary))
+  # preds <-  (coef_perms %*% t(pred_terms)) %>%
+  #   as_tibble() %>%
+  #   pivot_longer(cols=everything(),
+  #                names_to="pred",
+  #                values_to="est") %>%
+  #   mutate(pred=as.numeric(pred)) %>%
+  #   group_by(pred) %>%
+  #   summarize(logit_mean=mean(est),
+  #             logit_sd=sd(est))
   # qplot(x=param_pred_dat$age, y=plogis(preds$logit_mean), color=factor(param_pred_dat$study)) + theme(legend.position="none")
 
-
-  param_preds <- param_pred_dat %>%
-    mutate(logit_mean=preds$logit_mean,
-           logit_sd=preds$logit_sd,
-           age_grp=cut(age,age_cats,right = FALSE)) %>%
-    group_by(age_grp, age) %>%
-    summarize(wt_logit_mean=weighted.mean(logit_mean, wt),
-              wt_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2)) %>%
-    group_by(age_grp) %>%
-    summarize(logit_mean=mean(wt_logit_mean),
-              logit_sd=sqrt(mean(wt_logit_mean^2+wt_logit_sd^2)-mean(wt_logit_mean)^2))
+  # param_preds <- param_pred_dat %>%
+  #   mutate(logit_mean=preds$logit_mean,
+  #          logit_sd=preds$logit_sd,
+  #          age_grp=cut(age,age_cats,right = FALSE)) %>%
+  #   group_by(age_grp, age) %>%
+  #   summarize(wt_logit_mean=weighted.mean(logit_mean, wt),
+  #             wt_logit_sd=sqrt(weighted.mean(logit_mean^2+logit_sd^2, wt)-weighted.mean(logit_mean, wt)^2)) %>%
+  #   group_by(age_grp) %>%
+  #   summarize(logit_mean=mean(wt_logit_mean),
+  #             logit_sd=sqrt(mean(wt_logit_mean^2+wt_logit_sd^2)-mean(wt_logit_mean)^2))
   # ggplot(data=param_preds, aes(x=age_grp)) +
   #   geom_errorbar(aes(ymin=plogis(logit_mean-1.96*logit_sd), ymax=plogis(logit_mean+1.96*logit_sd)), alpha=0.4) +
   #   geom_point(aes(y=plogis(logit_mean)))
-  return(param_preds)
+  return(list(pred_mtx=preds, pred_sum=pred_summary, param_to_est=param_to_est))
+}
+
+#' Find parameter values for GEOIDs
+#'
+#' @param age_params list, output of est_age_spec_param()
+#' @param geoid_age_mtx matrix of population by age and GEOID (e.g. data(US_age_geoid_pct))
+#'
+#' @return dataframe with GEOIDs with the median probability for the given parameter
+#' @export
+#'
+#' @examples
+est_geoid_params <- function(age_params,
+                             geoid_age_mtx=US_age_geoid_pct){
+  geoid_preds <- geoid_age_mtx %*% age_params$pred_mtx %>%
+    as_tibble(rownames="geoid") %>%
+    pivot_longer(cols=-geoid,
+                 names_to="pred",
+                 values_to="est") %>%
+    group_by(geoid) %>%
+    summarize(p_est=median(est))
+  colnames(geoid_preds)[2] <- age_params$param_to_est
+  return(geoid_preds)
+}
+
+#' Estimate relative rates for GEOIDs
+#'
+#' @param pred_mtx matrix of predicted parameter values by age category and simulation from est_age_spec_param()$pred_mtx
+#' @param param_to_est character string to name output column
+#' @param geoid_age_mtx matrix of proportion of population by age category and GEOID (e.g. data(US_age_geoid_pct))
+#' @param geoid_pops matrix of total population by age category and GEOID (e.g. data(US_age_geoid_pop))
+#'
+#' @return dataframe with GEOIDs and relative rates
+#' @export
+#'
+#' @examples
+est_geoid_rrs <- function(pred_mtx,
+                          param_to_est,
+                          geoid_age_mtx=US_age_geoid_pct,
+                          geoid_pops=US_age_geoid_pop){
+  ## calc nationwide rate per sim
+  nationwide_rate <- geoid_pops %*% pred_mtx %>%
+    as_tibble(rownames="geoid") %>%
+    pivot_longer(cols=-geoid,
+                 names_to="pred",
+                 values_to="est") %>%
+    group_by(pred) %>%
+    summarize(total_est=sum(est)) %>%
+    mutate(total_pop=sum(US_age_geoid_pop),
+           overall_rate=total_est/total_pop)
+
+  ## get geoid relative rates per sim
+  geoid_rrs <- geoid_age_mtx %*% pred_mtx %>%
+    as_tibble(rownames="geoid") %>%
+    pivot_longer(cols=-geoid,
+                 names_to="pred",
+                 values_to="est") %>%
+    left_join(nationwide_rate, by="pred") %>%
+    group_by(geoid) %>%
+    summarize(rr_est=median(est/overall_rate))
+  if(!missing(param_to_est))
+    colnames(geoid_rrs)[2] <- param_to_est
+  return(geoid_rrs)
 }
