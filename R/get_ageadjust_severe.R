@@ -378,8 +378,10 @@ est_geoid_rrs <- function(pred_mtx,
                  values_to="est") %>%
     left_join(nationwide_rate, by="pred") %>%
     group_by(geoid) %>%
-    summarize(rr_est=median(est/overall_rate))
+    summarize(rr_est=median(est/overall_rate),
+              overall_est=median(overall_rate))
   if(!missing(param_to_est))
-    colnames(geoid_rrs)[2] <- param_to_est
+    colnames(geoid_rrs)[2:3] <- c(paste0("rr_", param_to_est),
+                                  paste0(param_to_est, "_overall"))
   return(geoid_rrs)
 }

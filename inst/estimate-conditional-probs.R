@@ -142,36 +142,35 @@ all_params <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
                                matrix(1, nrow=nrow(US_age_geoid_pct), ncol=1,
                                       dimnames=list(rownames(US_age_geoid_pct),
                                                     "[0,100)"))), by="geoid") %>%
-    left_join(est_geoid_rrs(pred_mtx=p_death$pred_mtx * p_symp$pred_mtx,
-                            param_to_est="rr_death",
+    left_join(est_geoid_rrs(pred_mtx=p_death$pred_mtx,
+                            param_to_est="death_symp",
                             geoid_age_mtx=US_age_geoid_pct,
                             geoid_pops=US_age_geoid_pop), by="geoid") %>%
-    left_join(est_geoid_rrs(pred_mtx=p_hosp$pred_mtx * p_symp$pred_mtx,
-                            param_to_est="rr_hosp",
+    left_join(est_geoid_rrs(pred_mtx=p_hosp$pred_mtx,
+                            param_to_est="hosp_symp",
                             geoid_age_mtx=US_age_geoid_pct,
                             geoid_pops=US_age_geoid_pop), by="geoid") %>%
     mutate(sim=h)
 
   return(geoid_params)
 }
-all_params %>%
-  filter(sim==17) %>%
-  select(-sim) %>%
-  write_csv("generated_data/geoid-params.csv")
+
+## find the simulation with the median CFR
+med_sim <- (all_params %>%
+  select(sim, death_symp_overall) %>%
+  distinct() %>%
+  mutate(dist_from_med=abs(death_symp_overall-median(death_symp_overall))) %>%
+  arrange(dist_from_med) %>%
+  slice(1))$sim
+
+## median sim
+median_sim <- all_params %>%
+  filter(sim==med_sim)
 
 ## county parameter distributions
-all_params %>%
-  filter(sim==17) %>%
-  select(p_symp_inf, p_hosp_symp, p_death_symp, p_death_inf, p_hosp_inf, p_icu_hosp,p_vent_icu) %>%
+median_sim %>%
   summary()
 
-## nationwide parameter distributions
-all_params %>%
-  filter(sim==17) %>%
-  summarize(p_symp_inf=weighted.mean(p_symp_inf, pop),
-            p_hosp_symp=weighted.mean(p_hosp_symp, pop),
-            p_death_symp=weighted.mean(p_death_symp, pop),
-            p_death_inf=weighted.mean(p_death_inf, pop),
-            p_hosp_inf=weighted.mean(p_hosp_inf, pop),
-            p_icu_hosp=weighted.mean(p_icu_hosp, pop),
-            p_vent_icu=weighted.mean(p_vent_icu, pop))
+median_sim %>%
+  select(-sim) %>%
+  write_csv("generated_data/geoid-params.csv")
