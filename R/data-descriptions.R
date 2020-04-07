@@ -1,17 +1,22 @@
 #'
 #' US population by age category and GEOID
 #'
-#' A list containing the proportion and total of the population by 10 year age
+#' A matrix containing the proportion of the population by 10 year age
 #' categories in the US
 #'
-#' @format A list with 4 items
-#' \itemize{
-#'   \item \code{GEOID} the location GEOIDs for regions across the US
-#'   \item \code{agecat} the age categories used for aggregation
-#'   \item \code{p_age} proportion of people in each age category for each GEOID
-#'   \item \code{est_age} the total number of people in each age category for each GEOID
-#' }
-#' @docType list
-#' @name USpop_geoid_agecat
-#' @usage data(USpop_geoid_agecat)
+#' @format A matrix where rows are GEOIDs and columns are age groups
+#' @docType data
+#' @name US_age_geoid_pct
+#' @usage data(US_age_geoid_pct)
+NULL
+
+#'
+#' US population by age category and GEOID
+#'
+#' A matrix containing the total population by 10 year age categories in the US
+#'
+#' @format A matrix where rows are GEOIDs and columns are age groups
+#' @docType data
+#' @name US_age_geoid_pop
+#' @usage data(US_age_geoid_pop)
 NULL
