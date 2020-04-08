@@ -33,9 +33,11 @@ parameters {
 }
 transformed parameters {
   // actual spline coefficients
-  vector[knots_1[1]] s_1_1 = sds_1_1 * zs_1_1;
+  vector[knots_1[1]] s_1_1;
   // actual group-level effects
-  vector[N_1] r_1_1 = (sd_1[1] * (z_1[1]));
+  vector[N_1] r_1_1;
+  s_1_1 = sds_1_1 * zs_1_1;
+  r_1_1 = (sd_1[1] * (z_1[1]));
 }
 model {
   // initialize linear predictor term
