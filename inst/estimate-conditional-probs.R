@@ -150,6 +150,14 @@ all_params <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
                             param_to_est="hosp_symp",
                             geoid_age_mtx=US_age_geoid_pct,
                             geoid_pops=US_age_geoid_pop), by="geoid") %>%
+    left_join(est_geoid_rrs(pred_mtx=p_death$pred_mtx * p_symp$pred_mtx,
+                            param_to_est="death_inf",
+                            geoid_age_mtx=US_age_geoid_pct,
+                            geoid_pops=US_age_geoid_pop), by="geoid") %>%
+    left_join(est_geoid_rrs(pred_mtx=p_hosp$pred_mtx * p_symp$pred_mtx,
+                            param_to_est="hosp_inf",
+                            geoid_age_mtx=US_age_geoid_pct,
+                            geoid_pops=US_age_geoid_pop), by="geoid") %>%
     mutate(sim=h)
 
   return(geoid_params)
