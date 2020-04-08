@@ -20,3 +20,14 @@ NULL
 #' @name US_age_geoid_pop
 #' @usage data(US_age_geoid_pop)
 NULL
+
+#'
+#' Age-adjusted parameters for each US GEOID
+#'
+#' A data frame with the median conditional probabilities for each parameter for each GEOID
+#'
+#' @format tbl, where rows are GEOIDs and columns are parameters
+#' @docType data
+#' @name US_geoid_params
+#' @usage data(US_geoid_params)
+NULL

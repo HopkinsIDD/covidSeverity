@@ -1,16 +1,24 @@
 Package: covidSeverity
-Title: What the Package Does (One Line, Title Case)
-Version: 0.0.0.9000
+Title: Calculate COVID-19 Conditional Probabilities 
+Version: 0.1
 Authors@R: 
-    person(given = "First",
-           family = "Last",
-           role = c("aut", "cre"),
-           email = "first.last@example.com",
-           comment = c(ORCID = "YOUR-ORCID-ID"))
+    c(person(given=c("Stephen", "A."),
+             family="Lauer",
+             email="slauer5@jh.edu",
+             role = c("aut", "cre")),
+      person(given = c("Shaun", "A."),
+             family = "Truelove",
+             role = "ctb",
+             email = "shauntruelove@jhu.edu"),
+      person(given = c("Kyra", "H."),
+             family = "Grantz",
+             role = "ctb"))
 Description: What the package does (one paragraph).
+Depends:
+    tidyverse
 Imports:
-    tidyverse,
-    tidycensus
+    tidycensus,
+    mgcv
 License: What license it uses
 Encoding: UTF-8
 LazyData: true
