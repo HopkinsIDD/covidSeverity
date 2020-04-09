@@ -13,14 +13,11 @@ age_grps <- c(seq(0,80,by=10),100)
 
 data("US_age_geoid_pct")
 data("US_age_geoid_pop")
-
-age_specific_data <- googlesheets4::read_sheet("https://docs.google.com/spreadsheets/d/1pDfQ2SkO--F2WNfjZxx6t9V7K51IZW0bJKV5cwSCZfA/edit#gid=1769840547",
-                                               sheet="age risk") %>%
-  filter(USE_pipeline==T)
-1
+data("raw_age_estimates")
 
 ## look at one conditional probability (e.g. proportion symptomatic pSymp_Inf)
-raw_params <- age_specific_data %>%
+raw_params <- raw_age_estimates %>%
+  filter(USE_pipeline==T) %>%
   mutate(N = ifelse(is.na(N),
                     ifelse(!is.na(X) & value>0, round(X/value),
                            ifelse(!is.na(valueR),
@@ -276,6 +273,20 @@ ggplot(data=p_hosp_symp$pred_sum, aes(x=age_grp)) +
   scale_y_continuous("Probability hospitalized, given symptomatic") +
   scale_x_discrete("Age groups") +
   theme_bw()
+
+p_mild_symp <- list(pred_mtx=1-p_hosp_symp$pred_mtx,
+                    param_to_est="p_mild_symp")
+p_mild_symp$pred_sum <- p_mild_symp$pred_mtx %>%
+  as_tibble() %>%
+  mutate(age_grp=cut(age_grps[1:(length(age_grps)-1)], age_grps, right=F)) %>%
+  pivot_longer(cols=starts_with("V"),
+               names_to="pred",
+               values_to="est") %>%
+  group_by(age_grp) %>%
+  summarize(est_mean=mean(est),
+            est_med=median(est),
+            est_lb=quantile(est, probs=.025),
+            est_ub=quantile(est, probs=.975))
 
 ## hospitalization rate amongst infections
 p_hosp_inf <- list(pred_mtx=p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx,

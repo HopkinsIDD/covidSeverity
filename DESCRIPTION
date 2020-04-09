@@ -15,10 +15,13 @@ Authors@R:
              role = "ctb"))
 Description: What the package does (one paragraph).
 Depends:
-    tidyverse
+    tidyverse,
+    R (>= 3.5.0)
 Imports:
     tidycensus,
     mgcv
+Suggests: knitr, rmarkdown, googlesheets4
+VignetteBuilder: knitr
 License: What license it uses
 Encoding: UTF-8
 LazyData: true
