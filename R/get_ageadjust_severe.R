@@ -3,14 +3,8 @@
 #'
 #' Fits a cubic spline across multiple studies to estimate the parameter of interest by specified age categories.
 #'
-#' @param expanded_dat data.frame with following columns:
-#' \itemize{
-#'   \item \code{param} name of the parameter to estimate
-#'   \item \code{study} numeric, representing the study from which the observation came
-#'   \item \code{age} numeric, age of the observed individual
-#'   \item \code{x} numeric, binary 0 or 1 for whether outcome was observed
-#'   }
-#' @param param_to_est character, one of the parameter names in expanded_dat$param
+#' @param age_cat_data
+#' @param param_to_est character, one of the parameter names in age_cat_data$param
 #' @param age_cats numeric vector, the cutoff values for each age group
 #' @param n_preds numeric, number of predictions for the gam model to make
 #' @param study_wt character string, how to weight the random effects for the studies after the model is fit, there are multiple options:
@@ -30,30 +24,29 @@
 #' @export
 #'
 #' @examples
-#' ## dummy data
-#' expanded_dat <- tibble(param="p_vent_icu",
-#'                        study=c(rep(1,400), rep(2,600)),
-#'                        age=runif(1000,0,100),
-#'                        x=c(rbinom(400, 1, 0.3), rbinom(600, 1, 0.45)))
+#' ## load param data
+#' data("raw_age_estimates")
+#' ## filter to only those for pipeline
+#' raw_params <- filter(raw_age_estimates, USE_pipeline==T)
 #'
 #' ## run function
-#' p_vent <- est_age_param(expanded_dat=expanded_dat,
-#'                              param_to_est="p_vent_icu",
-#'                              n_preds=1000)
+#' p_vent <- est_age_param(age_cat_data=raw_params,
+#'                         param_to_est="p_vent_icu",
+#'                         n_preds=1000)
 #'
 #' ## view summary
 #' p_vent$pred_sum
-est_age_param <- function(expanded_dat,
+est_age_param <- function(age_cat_data,
                           param_to_est="p_symp_inf",
                           age_cats=c(seq(0,80,by=10),100),
                           n_preds,
                           study_wt="none" #c("n", "root_n", "equal"))
 ) {
-  if(!(param_to_est %in% expanded_dat$param)){
+  if(!(param_to_est %in% age_cat_data$param)){
     stop("param_to_est must exist within expanded_dat$param")
   }
-  param_dat <- expanded_dat %>%
-    filter(param==param_to_est)
+  param_dat <- expand_age_data(age_cat_data=age_cat_data,
+                               param_to_est=param_to_est)
 
   studies <- unique(param_dat$study)
   num_studies <- length(studies)
@@ -205,4 +198,56 @@ est_geoid_rrs <- function(pred_mtx,
     colnames(geoid_rrs)[2:3] <- c(paste0("rr_", param_to_est),
                                   paste0(param_to_est, "_overall"))
   return(geoid_rrs)
+}
+
+#' Expanded age category data
+#'
+#' draw ages from categories for better model fitting
+#'
+#' @param age_cat_data data.frame
+#' @param param_to_est character string of parameter of interest
+#'
+#' @return data.frame with following columns:
+#' \itemize{
+#'   \item \code{param} name of the parameter to estimate
+#'   \item \code{study} integer, representing the study from which the observation came
+#'   \item \code{age} numeric, age of the observed individual
+#'   \item \code{x} numeric, binary 0 or 1 for whether outcome was observed
+#'   }
+#' @export
+#'
+#' @examples
+#' ## load param data
+#' data("raw_age_estimates")
+#' ## filter to only those for pipeline
+#' raw_params <- filter(raw_age_estimates, USE_pipeline==T)
+#' ## expand data for "p_symp_inf"
+#' expand_age_data(raw_params, "p_symp_inf")
+expand_age_data <- function(age_cat_data,
+                            param_to_est="p_symp_inf"){
+  ## filter to only parameter of interest
+  param_dat <- filter(age_cat_data, param==param_to_est) %>%
+    mutate(age_rng = paste0(ageL,"_",ageR))
+  expanded_dat <- c()
+  ## break out each study
+  studies <- unique(param_dat$source)
+  num_studies <- length(studies)
+  for(i in 1:num_studies){
+    tmp <- param_dat %>% filter(source==studies[i])
+    ## break out each age group
+    age_groups <- unique(tmp$age_rng)
+    num_ag <- length(age_groups)
+    for(j in 1:num_ag){
+      tmp_ag <- tmp %>% filter(age_rng==age_groups[j])
+      expanded_dat <- bind_rows(expanded_dat,
+                                tibble(param=param_to_est,
+                                       study=i,
+                                       age=sample(tmp_ag$ageL:tmp_ag$ageR,
+                                                  tmp_ag$N, replace=T),
+                                       x=sample(c(rep(1,tmp_ag$X),
+                                                  rep(0,tmp_ag$N-tmp_ag$X)),
+                                                tmp_ag$N, replace=F)))
+    }
+  }
+  return(expanded_dat)
 }

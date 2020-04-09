@@ -1,9 +1,6 @@
 ## estimate conditional probabilities
 
 options(scipen=999)
-library(googlesheets4)
-library(tidyverse)
-library(mgcv)
 library(covidSeverity)
 library(doMC)
 registerDoMC(10)
@@ -24,48 +21,17 @@ raw_params <- raw_age_estimates %>%
                                   round(value*(1-value)*(qnorm(.975)/(valueR-value))^2),
                                   1000)),
                     N),
-         X = ifelse(is.na(X),ceiling(N*value),X),
-         age_rng = paste0(ageL,"_",ageR))
+         X = ifelse(is.na(X),ceiling(N*value),X))
 
-## reallocate cases to new age groups
-## first expand summarized data, n_sims times
 all_params <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
   set.seed(h)
-  expanded_dat <- c()
-  ## do each param separately
-  params <- unique(raw_params$param)
-  num_params <- length(params)
-  for(i in 1:num_params){
-    param_dat <- filter(raw_params, param==params[i])
-    ## keep the studies separate
-    studies <- unique(param_dat$source)
-    num_studies <- length(studies)
-    for(j in 1:num_studies){
-      tmp <- param_dat %>% filter(source==studies[j])
-      ## break out each age group
-      age_groups <- unique(tmp$age_rng)
-      num_ag <- length(age_groups)
-      for(k in 1:num_ag){
-        tmp_ag <- tmp %>% filter(age_rng==age_groups[k])
-
-        expanded_dat <- bind_rows(expanded_dat,
-                                  tibble(param=tmp_ag$param[1],
-                                         study=j,
-                                         age=sample(tmp_ag$ageL[1]:tmp_ag$ageR[1],
-                                                    tmp_ag$N[1], replace=T),
-                                         x=sample(c(rep(1,tmp_ag$X[1]),
-                                                    rep(0,tmp_ag$N[1]-tmp_ag$X[1])),
-                                                  tmp_ag$N[1], replace=F)))
-      }
-    }
-  }
 
   ## make proportion symptomatic given infected
-  p_symp <- est_age_param(expanded_dat=expanded_dat,
-                               param_to_est="p_symp_inf",
-                               age_cats=age_grps,
-                               n_preds=n_preds,
-                               study_wt="none")
+  p_symp <- est_age_param(age_cat_data=raw_params,
+                          param_to_est="p_symp_inf",
+                          age_cats=age_grps,
+                          n_preds=n_preds,
+                          study_wt="none")
   ggplot(data=p_symp$pred_sum, aes(x=age_grp)) +
     geom_errorbar(aes(ymin=p_symp_inf_lb,
                       ymax=p_symp_inf_ub), alpha=0.4) +
@@ -75,11 +41,11 @@ all_params <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
     theme_bw()
 
   ## CFR
-  p_death <- est_age_param(expanded_dat=expanded_dat,
-                                param_to_est="p_death_symp",
-                                age_cats=age_grps,
-                                n_preds=n_preds,
-                                study_wt="none")
+  p_death <- est_age_param(age_cat_data=raw_params,
+                           param_to_est="p_death_symp",
+                           age_cats=age_grps,
+                           n_preds=n_preds,
+                           study_wt="none")
   ggplot(data=p_death$pred_sum, aes(x=age_grp)) +
     geom_errorbar(aes(ymin=p_death_symp_lb,
                       ymax=p_death_symp_ub), alpha=0.4) +
@@ -89,11 +55,11 @@ all_params <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
     theme_bw()
 
   ## hospitalization rate amongst symptomatic
-  p_hosp <- est_age_param(expanded_dat=expanded_dat,
-                               param_to_est="p_hosp_symp",
-                               age_cats=age_grps,
-                               n_preds=n_preds,
-                               study_wt="none")
+  p_hosp <- est_age_param(age_cat_data=raw_params,
+                          param_to_est="p_hosp_symp",
+                          age_cats=age_grps,
+                          n_preds=n_preds,
+                          study_wt="none")
   ggplot(data=p_hosp$pred_sum, aes(x=age_grp)) +
     geom_errorbar(aes(ymin=p_hosp_symp_lb,
                       ymax=p_hosp_symp_ub), alpha=0.4) +
@@ -103,11 +69,11 @@ all_params <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
     theme_bw()
 
   ## ICU rate amongst hospitalized
-  p_icu <- est_age_param(expanded_dat=expanded_dat,
-                              param_to_est="p_icu_hosp",
-                              age_cats=age_grps,
-                              n_preds=n_preds,
-                              study_wt="none")
+  p_icu <- est_age_param(age_cat_data=raw_params,
+                         param_to_est="p_icu_hosp",
+                         age_cats=age_grps,
+                         n_preds=n_preds,
+                         study_wt="none")
   ggplot(data=p_icu$pred_sum, aes(x=age_grp)) +
     geom_errorbar(aes(ymin=p_icu_hosp_lb,
                       ymax=p_icu_hosp_ub), alpha=0.4) +
@@ -117,11 +83,11 @@ all_params <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
     theme_bw()
 
   ## ventilation rate amongst symptomatic
-  p_vent <- est_age_param(expanded_dat,
-                               param_to_est="p_vent_icu",
-                               age_cats=c(0,100),
-                               n_preds=n_preds,
-                               study_wt="none")
+  p_vent <- est_age_param(age_cat_data=raw_params,
+                          param_to_est="p_vent_icu",
+                          age_cats=c(0,100),
+                          n_preds=n_preds,
+                          study_wt="none")
   ggplot(data=p_vent$pred_sum, aes(x=age_grp)) +
     geom_errorbar(aes(ymin=p_vent_icu_lb,
                       ymax=p_vent_icu_ub), alpha=0.4) +
@@ -219,10 +185,10 @@ for(i in 1:num_params){
 
 ## make proportion symptomatic given infected
 p_symp_inf <- est_age_param(expanded_dat=expanded_dat,
-                                 param_to_est="p_symp_inf",
-                                 age_cats=age_grps,
-                                 n_preds=n_preds,
-                                 study_wt="none")
+                            param_to_est="p_symp_inf",
+                            age_cats=age_grps,
+                            n_preds=n_preds,
+                            study_wt="none")
 ggplot(data=p_symp_inf$pred_sum, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=p_symp_inf_lb,
                     ymax=p_symp_inf_ub), alpha=0.4) +
@@ -233,10 +199,10 @@ ggplot(data=p_symp_inf$pred_sum, aes(x=age_grp)) +
 
 ## CFR
 p_death_symp <- est_age_param(expanded_dat=expanded_dat,
-                                   param_to_est="p_death_symp",
-                                   age_cats=age_grps,
-                                   n_preds=n_preds,
-                                   study_wt="none")
+                              param_to_est="p_death_symp",
+                              age_cats=age_grps,
+                              n_preds=n_preds,
+                              study_wt="none")
 ggplot(data=p_death_symp$pred_sum, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=p_death_symp_lb,
                     ymax=p_death_symp_ub), alpha=0.4) +
@@ -262,10 +228,10 @@ p_death_inf$pred_sum <- p_death_inf$pred_mtx %>%
 
 ## hospitalization rate amongst symptomatic
 p_hosp_symp <- est_age_param(expanded_dat=expanded_dat,
-                                  param_to_est="p_hosp_symp",
-                                  age_cats=age_grps,
-                                  n_preds=n_preds,
-                                  study_wt="none")
+                             param_to_est="p_hosp_symp",
+                             age_cats=age_grps,
+                             n_preds=n_preds,
+                             study_wt="none")
 ggplot(data=p_hosp_symp$pred_sum, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=p_hosp_symp_lb,
                     ymax=p_hosp_symp_ub), alpha=0.4) +
@@ -290,7 +256,7 @@ p_mild_symp$pred_sum <- p_mild_symp$pred_mtx %>%
 
 ## hospitalization rate amongst infections
 p_hosp_inf <- list(pred_mtx=p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx,
-                    param_to_est="p_hosp_inf")
+                   param_to_est="p_hosp_inf")
 p_hosp_inf$pred_sum <- p_hosp_inf$pred_mtx %>%
   as_tibble() %>%
   mutate(age_grp=cut(age_grps[1:(length(age_grps)-1)], age_grps, right=F)) %>%
@@ -305,10 +271,10 @@ p_hosp_inf$pred_sum <- p_hosp_inf$pred_mtx %>%
 
 ## ICU rate amongst hospitalized
 p_icu_hosp <- est_age_param(expanded_dat=expanded_dat,
-                                 param_to_est="p_icu_hosp",
-                                 age_cats=age_grps,
-                                 n_preds=n_preds,
-                                 study_wt="none")
+                            param_to_est="p_icu_hosp",
+                            age_cats=age_grps,
+                            n_preds=n_preds,
+                            study_wt="none")
 ggplot(data=p_icu_hosp$pred_sum, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=p_icu_hosp_lb,
                     ymax=p_icu_hosp_ub), alpha=0.4) +
@@ -319,10 +285,10 @@ ggplot(data=p_icu_hosp$pred_sum, aes(x=age_grp)) +
 
 ## ventilation rate amongst symptomatic
 p_vent_icu <- est_age_param(expanded_dat,
-                                 param_to_est="p_vent_icu",
-                                 age_cats=c(0,100),
-                                 n_preds=n_preds,
-                                 study_wt="none")
+                            param_to_est="p_vent_icu",
+                            age_cats=c(0,100),
+                            n_preds=n_preds,
+                            study_wt="none")
 ggplot(data=p_vent_icu$pred_sum, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=p_vent_icu_lb,
                     ymax=p_vent_icu_ub), alpha=0.4) +

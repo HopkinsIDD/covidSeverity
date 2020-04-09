@@ -3,6 +3,7 @@
 export(est_age_param)
 export(est_geoid_params)
 export(est_geoid_rrs)
+export(expand_age_data)
 export(format_age_county_pop)
 export(load_age_county_pop)
 export(make_age_matrix)

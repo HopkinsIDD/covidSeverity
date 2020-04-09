@@ -5,7 +5,7 @@
 \title{Age-specific parameter estimation}
 \usage{
 est_age_param(
-  expanded_dat,
+  age_cat_data,
   param_to_est = "p_symp_inf",
   age_cats = c(seq(0, 80, by = 10), 100),
   n_preds,
@@ -13,15 +13,7 @@ est_age_param(
 )
 }
 \arguments{
-\item{expanded_dat}{data.frame with following columns:
-\itemize{
-  \item \code{param} name of the parameter to estimate
-  \item \code{study} numeric, representing the study from which the observation came
-  \item \code{age} numeric, age of the observed individual
-  \item \code{x} numeric, binary 0 or 1 for whether outcome was observed
-  }}
-
-\item{param_to_est}{character, one of the parameter names in expanded_dat$param}
+\item{param_to_est}{character, one of the parameter names in age_cat_data$param}
 
 \item{age_cats}{numeric vector, the cutoff values for each age group}
 
@@ -47,16 +39,15 @@ list with 3 items
 Fits a cubic spline across multiple studies to estimate the parameter of interest by specified age categories.
 }
 \examples{
-## dummy data
-expanded_dat <- tibble(param="p_vent_icu",
-                       study=c(rep(1,400), rep(2,600)),
-                       age=runif(1000,0,100),
-                       x=c(rbinom(400, 1, 0.3), rbinom(600, 1, 0.45)))
+## load param data
+data("raw_age_estimates")
+## filter to only those for pipeline
+raw_params <- filter(raw_age_estimates, USE_pipeline==T)
 
 ## run function
-p_vent <- est_age_param(expanded_dat=expanded_dat,
-                             param_to_est="p_vent_icu",
-                             n_preds=1000)
+p_vent <- est_age_param(age_cat_data=raw_params,
+                        param_to_est="p_vent_icu",
+                        n_preds=1000)
 
 ## view summary
 p_vent$pred_sum
