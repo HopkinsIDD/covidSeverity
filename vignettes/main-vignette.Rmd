@@ -1,0 +1,92 @@
+---
+title: "covidSeverity methods and application"
+author: "Stephen A Lauer"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{covidSeverity methods and application}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The goal of this package is to estimate a set of conditional probabilities for COVID-19, currently with respect to age and hopefully extending to other attributes (sex, comorbidities) in the future, and apply those to US GEOIDs.
+Here is the current list of estimated conditional probabilities:
+
+- Probability of symptoms given infection and age, $\mathbb{P}(symp \mid inf, age)$
+- Probability of death given symptoms and age, $\mathbb{P}(death \mid symp, age)$
+- Probability of hospitalization given symptoms and age, $\mathbb{P}(hosp \mid symp, age)$
+- Probability of ICU admission given hospitalization and age, $\mathbb{P}(ICU \mid hosp, age)$
+- Probability of invasive mechanical ventilation given symptoms and age, $\mathbb{P}(vent \mid ICU, age)$
+
+## Methods
+
+### Data sources
+
+#### Probability of symptoms given infection and age
+
+[Age-dependent effects in the transmission and control of COVID-19 epidemics](https://cmmid.github.io/topics/covid19/current-patterns-transmission/reports/age_hypotheses/Main%20text%20-%20COVID-19%20dynamics%20in%20children_%20implications%20for%20policy%20-%20no_line_numbers.pdf). Nicholas G. Davies, Petra Klepac, Yang Liu, Kiesha Prem, Mark Jit, CMMID COVID-19 working group, and Rosalind M Eggo.
+
+#### Probability of death given symptoms and age
+
+[Estimates of the severity of coronavirus disease 2019: a model-based analysis](https://www.thelancet.com/journals/laninf/article/PIIS1473-3099(20)30243-7/fulltext). Robert Verity, Lucy C Okell, Ilaria Dorigatti, Peter Winskill, Charles Whittaker, Natsuko Imai, Gina Cuomo-Dannenburg, Hayley Thompson, Patrick Walker, Han Fu, Amy Dighe, Jamie Griffin, Anne Cori, Marc Baguelin, Sangeeta Bhatia, Adhiratha Boonyasiri,  View ORCID ProfileZulma M Cucunuba, Rich Fitzjohn, Katy A M Gaythorpe, Will Green, Arran Hamlet, Wes Hinsley, Daniel Laydon, Gemma Nedjati-Gilani, Steven Riley, Sabine van-Elsand, Erik Volz, Haowei Wang, Yuanrong Wang, Xiayoue Xi, Christl Donnelly, Azra Ghani, and Neil Ferguson.
+
+#### Probability of hospitalization given symptoms and age
+
+[Epidemiology of COVID-19 Among Children in China](https://pediatrics.aappublications.org/content/early/2020/03/16/peds.2020-0702.1). Yuanyuan Dong, Xi Mo, Yabin Hu, Xin Qi, Fan Jiang, Zhongyi Jiang and Shilu Tong.
+
+[Impact of non-pharmaceutical interventions (NPIs) to reduce COVID-19 mortality and healthcare demand](https://www.imperial.ac.uk/media/imperial-college/medicine/sph/ide/gida-fellowships/Imperial-College-COVID19-NPI-modelling-16-03-2020.pdf). Neil M Ferguson, Daniel Laydon, Gemma Nedjati-Gilani, Natsuko  Imai, Kylie  Ainslie, Marc  Baguelin, Sangeeta Bhatia, Adhiratha Boonyasiri,  Zulma Cucunubá, Gina Cuomo-Dannenburg, Amy Dighe, Ilaria Dorigatti, Han Fu, Katy Gaythorpe, Will Green, Arran Hamlet, Wes Hinsley, Lucy C Okell, Sabine van Elsland, Hayley Thompson, Robert Verity, Erik Volz, Haowei Wang, Yuanrong Wang, Patrick GT Walker, Caroline Walters, Peter Winskill, Charles Whittaker, Christl A Donnelly, Steven Riley, and Azra C Ghani.
+
+[Severe Outcomes Among Patients with Coronavirus Disease 2019 (COVID-19) — United States, February 12–March 16, 2020](https://www.cdc.gov/mmwr/volumes/69/wr/mm6912e2.htm#T1_down). CDC COVID-19 Response Team.
+
+#### Probability of ICU admission given hospitalization and age
+
+[Epidemiology of COVID-19 Among Children in China](https://pediatrics.aappublications.org/content/early/2020/03/16/peds.2020-0702.1). Yuanyuan Dong, Xi Mo, Yabin Hu, Xin Qi, Fan Jiang, Zhongyi Jiang and Shilu Tong.
+
+[Impact of non-pharmaceutical interventions (NPIs) to reduce COVID-19 mortality and healthcare demand](https://www.imperial.ac.uk/media/imperial-college/medicine/sph/ide/gida-fellowships/Imperial-College-COVID19-NPI-modelling-16-03-2020.pdf). Neil M Ferguson, Daniel Laydon, Gemma Nedjati-Gilani, Natsuko  Imai, Kylie  Ainslie, Marc  Baguelin, Sangeeta Bhatia, Adhiratha Boonyasiri,  Zulma Cucunubá, Gina Cuomo-Dannenburg, Amy Dighe, Ilaria Dorigatti, Han Fu, Katy Gaythorpe, Will Green, Arran Hamlet, Wes Hinsley, Lucy C Okell, Sabine van Elsland, Hayley Thompson, Robert Verity, Erik Volz, Haowei Wang, Yuanrong Wang, Patrick GT Walker, Caroline Walters, Peter Winskill, Charles Whittaker, Christl A Donnelly, Steven Riley, and Azra C Ghani.
+
+#### Probability of invasive mechanical ventilation given symptoms and age
+
+[Clinical course and outcomes of critically ill patients with SARS-CoV-2 pneumonia in Wuhan, China: a single-centered, retrospective, observational study](https://www.thelancet.com/journals/lanres/article/PIIS2213-2600(20)30079-5/fulltext). Xiaobo Yang, Yuan Yu, Jiqian Xu, Huaqing Shu, Jia’an Xia, Hong Liu, Yongran Wu, Lu Zhang, Zhui Yu, Minghao Fang, Ting Yu, Yaxin Wang, Shangwen Pan, Xiaojing Zou, Shiying Yuan, and You Shang.
+
+[Clinical Characteristics of 138 Hospitalized Patients With 2019 Novel Coronavirus–Infected Pneumonia in Wuhan, China](https://jamanetwork.com/journals/jama/fullarticle/2761044). Dawei Wang, MD, Bo Hu, MD, Chang Hu, MD, Fangfang Zhu, MD, Xing Liu, MD, Jing Zhang, MD, Binbin Wang, MD, Hui Xiang, MD, Zhenshun Cheng, MD, Yong Xiong, MD, Yan Zhao, MD, Yirong Li, MD, Xinghuan Wang, MD, and Zhiyong Peng, MD
+
+### Model
+
+For our age-specific estimates, we want conditional probabilities for 10-year age groups (0-9, 10-19, 20-29, 30-39, 40-49, 50-59, 60-69, 70-79, 80+), however the age categories in the data do not always align naturally.
+For example, we use four data sets to estimate the probability of hospitalization given symptomatic infection, two of which have ten year age groups, one which has small age categories for pediatric data, and one that has larger age groups that span multiple generations.
+For each study, we disaggregate the categories into individual observations, with a randomly assigned between the known age bounds, and a randomly assigned outcome.
+This gives us a large dataset with individual observations each with a study id, age, and outcome.
+
+With this large dataset, we fit a generalized additive model from the binomial family with a penalized cubic spline for age and a random effect for study:
+\begin{align*}
+  \log \frac{\mathbb{P}(Y=1 \mid X=x)}{\mathbb{P}(Y=0 \mid X=x)} &= \beta_0 + \alpha + f(age) \\
+  \alpha &\sim Normal(0, \sigma^2).
+\end{align*}
+We take 1,000 draws from the fitted model's multivariate logit-normal distribution for the coefficient estimates.
+We use these estimates to make 1,000 predictions for each age from 0 to 99, which are then converted into probabilities using the inverse-logit function and are averaged into 10-year age groups.
+These results can be produced using the `est_age_param()` function, where the output `pred_mtx` is a matrix with age categories in rows and simulations in columns.
+The function also produces a summary of each age group with a median and 95% confidence interval.
+
+### Predictions of US GEOIDs
+
+In this package, we provide a matrix of age distributions by US GEOID in `data("US_age_geoid_pct")`, where each row has a GEOID and each column has the proportion of the population that belongs to a 10-year age group.
+The dot product of this matrix and `pred_mtx` (from the model above) results in 1,000 estimates of the conditional probability for each GEOID.
+
+We are also able to find the relative risk of each GEOID compared to the US as a whole by using `data("US_age_geoid_pct")`, which provides the total population of each age category for each GEOID.
+Using this data and `pred_mtx` we can find the population-weighted average conditional probability for the nation.
+By dividing the conditional probability for each GEOID by the nationwide conditional probability, we get a relative risk for each location.
+
+We repeated the modeling and prediction process for each conditional probability 40 times, then took the simulation with the median nationwide conditional probability for each parameter.
+From those, we took the median estimate for each GEOID across the 1,000 simulations.
+From the `pred_mtx`s of multiple conditional probabilities, we were able to estimate other quantities, such as the infection fatality rate:
+\begin{align*}
+  \mathbb{P}(death \mid inf) &= \mathbb{P}(death \mid symp) * \mathbb{P}(symp \mid inf).
+\end{align*}
+The median estimates for each GEOID can be viewed in `data("US_geoid_params")`.
+The prediction matrices for each parameter are stored in `generated_data/param-age-dist.rds`.
