@@ -12,9 +12,9 @@
   \item \code{ageR} numeric, upper bound of age category
   \item \code{X} integer, numerator value of conditional probability (e.g., the number of symptomatic cases in P(symptomatic | infection))
   \item \code{N} integer, denominator value of conditional probability (e.g., the number of infections in P(symptomatic | infection))
-  \item \code{value} numeric, the proportion estimate for the conditional probability and age category.Is equal to X/N when both are known.
-  \item \code{valueL} numeric, lower bound of the conditional probability
-  \item \code{valueR} numeric, upper bound of the conditional probability
+  \item \code{p} numeric, the proportion estimate for the conditional probability and age category.Is equal to X/N when both are known.
+  \item \code{pL} numeric, lower bound of the conditional probability
+  \item \code{pR} numeric, upper bound of the conditional probability
   \item \code{desc} character string, description of the observation
   \item \code{data_date} date, when was the data collected
   \item \code{publish_date} date, when was the source published

@@ -15,180 +15,244 @@ data("raw_age_estimates")
 ## look at one conditional probability (e.g. proportion symptomatic pSymp_Inf)
 raw_params <- raw_age_estimates %>%
   filter(USE_pipeline==T) %>%
-  mutate(N = ifelse(is.na(N),
-                    ifelse(!is.na(X) & value>0, round(X/value),
-                           ifelse(!is.na(valueR),
-                                  round(value*(1-value)*(qnorm(.975)/(valueR-value))^2),
-                                  1000)),
-                    N),
-         X = ifelse(is.na(X),ceiling(N*value),X))
+  mutate(p = ifelse(!is.na(p), p,
+                    ifelse(!is.na(X) & !is.na(N), X/N,
+                           ifelse(!is.na(pR) & !is.na(pL),
+                                  (pL+pR)/2, NA))),
+         N = ifelse(!is.na(N), N,
+                    ifelse(!is.na(X) & p>0, round(X/p),
+                           ifelse(!is.na(pR),
+                                  round(p*(1-p)*(qnorm(.975)/(pR-p))^2),
+                                  1000))),
+         X = ifelse(is.na(X),ceiling(N*p),X))
 
-all_params <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
+geoid_symp_inf <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
   set.seed(h)
-
   ## make proportion symptomatic given infected
-  p_symp <- est_age_param(age_cat_data=raw_params,
+  tmp <- est_age_param(age_cat_data=raw_params,
                           param_to_est="p_symp_inf",
                           age_cats=age_grps,
                           n_preds=n_preds,
                           study_wt="none")
-  ggplot(data=p_symp$pred_sum, aes(x=age_grp)) +
-    geom_errorbar(aes(ymin=p_symp_inf_lb,
-                      ymax=p_symp_inf_ub), alpha=0.4) +
-    geom_point(aes(y=p_symp_inf_med)) +
-    scale_y_continuous("Probability symptomatic, given infected") +
-    scale_x_discrete("Age groups") +
-    theme_bw()
-
-  ## CFR
-  p_death <- est_age_param(age_cat_data=raw_params,
-                           param_to_est="p_death_symp",
-                           age_cats=age_grps,
-                           n_preds=n_preds,
-                           study_wt="none")
-  ggplot(data=p_death$pred_sum, aes(x=age_grp)) +
-    geom_errorbar(aes(ymin=p_death_symp_lb,
-                      ymax=p_death_symp_ub), alpha=0.4) +
-    geom_point(aes(y=p_death_symp_med)) +
-    scale_y_continuous("Case fatality rate") +
-    scale_x_discrete("Age groups") +
-    theme_bw()
-
-  ## hospitalization rate amongst symptomatic
-  p_hosp <- est_age_param(age_cat_data=raw_params,
-                          param_to_est="p_hosp_symp",
-                          age_cats=age_grps,
-                          n_preds=n_preds,
-                          study_wt="none")
-  ggplot(data=p_hosp$pred_sum, aes(x=age_grp)) +
-    geom_errorbar(aes(ymin=p_hosp_symp_lb,
-                      ymax=p_hosp_symp_ub), alpha=0.4) +
-    geom_point(aes(y=p_hosp_symp_med)) +
-    scale_y_continuous("Probability hospitalized, given symptomatic") +
-    scale_x_discrete("Age groups") +
-    theme_bw()
-
-  ## ICU rate amongst hospitalized
-  p_icu <- est_age_param(age_cat_data=raw_params,
-                         param_to_est="p_icu_hosp",
-                         age_cats=age_grps,
-                         n_preds=n_preds,
-                         study_wt="none")
-  ggplot(data=p_icu$pred_sum, aes(x=age_grp)) +
-    geom_errorbar(aes(ymin=p_icu_hosp_lb,
-                      ymax=p_icu_hosp_ub), alpha=0.4) +
-    geom_point(aes(y=p_icu_hosp_med)) +
-    scale_y_continuous("Probability ICU, given hospitalized") +
-    scale_x_discrete("Age groups") +
-    theme_bw()
-
-  ## ventilation rate amongst symptomatic
-  p_vent <- est_age_param(age_cat_data=raw_params,
-                          param_to_est="p_vent_icu",
-                          age_cats=c(0,100),
-                          n_preds=n_preds,
-                          study_wt="none")
-  ggplot(data=p_vent$pred_sum, aes(x=age_grp)) +
-    geom_errorbar(aes(ymin=p_vent_icu_lb,
-                      ymax=p_vent_icu_ub), alpha=0.4) +
-    geom_point(aes(y=p_vent_icu_med)) +
-    scale_y_continuous("Probability invasive ventilation, given ICU") +
-    scale_x_discrete("Age groups") +
-    theme_bw()
-
-  ## get all output parameters
-  geoid_params <- est_geoid_params(p_symp, US_age_geoid_pct) %>%
-    left_join(est_geoid_params(p_death, US_age_geoid_pct), by="geoid") %>%
-    left_join(est_geoid_params(p_hosp, US_age_geoid_pct), by="geoid") %>%
-    left_join(est_geoid_params(p_icu, US_age_geoid_pct), by="geoid") %>%
-    left_join(est_geoid_params(p_vent,
-                               matrix(1, nrow=nrow(US_age_geoid_pct), ncol=1,
-                                      dimnames=list(rownames(US_age_geoid_pct),
-                                                    "[0,100)"))), by="geoid") %>%
-    left_join(est_geoid_rrs(pred_mtx=p_death$pred_mtx,
-                            param_to_est="death_symp",
-                            geoid_age_mtx=US_age_geoid_pct,
-                            geoid_pops=US_age_geoid_pop), by="geoid") %>%
-    left_join(est_geoid_rrs(pred_mtx=p_hosp$pred_mtx,
-                            param_to_est="hosp_symp",
-                            geoid_age_mtx=US_age_geoid_pct,
-                            geoid_pops=US_age_geoid_pop), by="geoid") %>%
-    left_join(est_geoid_rrs(pred_mtx=p_death$pred_mtx * p_symp$pred_mtx,
-                            param_to_est="death_inf",
-                            geoid_age_mtx=US_age_geoid_pct,
-                            geoid_pops=US_age_geoid_pop), by="geoid") %>%
-    left_join(est_geoid_rrs(pred_mtx=p_hosp$pred_mtx * p_symp$pred_mtx,
-                            param_to_est="hosp_inf",
-                            geoid_age_mtx=US_age_geoid_pct,
-                            geoid_pops=US_age_geoid_pop), by="geoid") %>%
+  # ggplot(data=tmp$pred_sum, aes(x=age_grp)) +
+  #   geom_errorbar(aes(ymin=p_symp_inf_lb,
+  #                     ymax=p_symp_inf_ub), alpha=0.4) +
+  #   geom_point(aes(y=p_symp_inf_med)) +
+  #   scale_y_continuous("Probability symptomatic, given infected") +
+  #   scale_x_discrete("Age groups") +
+  #   theme_bw()
+  est_geoid_rrs(tmp$pred_mtx,
+                param_to_est="p_symp_inf",
+                geoid_age_mtx=US_age_geoid_pct,
+                geoid_pops=US_age_geoid_pop) %>%
     mutate(sim=h)
-
-  return(geoid_params)
 }
+symp_sim_med <- (geoid_symp_inf %>%
+                   select(sim, p_symp_inf_overall) %>%
+                   distinct() %>%
+                   mutate(dist_from_med=abs(p_symp_inf_overall-median(p_symp_inf_overall))) %>%
+                   arrange(dist_from_med) %>%
+                   slice(1))$sim
 
-## find the simulation with the median CFR
-med_sim <- (all_params %>%
-              select(sim, death_inf_overall) %>%
-              distinct() %>%
-              mutate(dist_from_med=abs(death_inf_overall-median(death_inf_overall))) %>%
-              arrange(dist_from_med) %>%
-              slice(1))$sim
+## CFR
+geoid_death_symp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
+  set.seed(h)
+  ## make proportion symptomatic given infected
+  tmp <- est_age_param(age_cat_data=raw_params,
+                       param_to_est="p_death_symp",
+                       age_cats=age_grps,
+                       n_preds=n_preds,
+                       study_wt="none")
+  # ggplot(data=tmp$pred_sum, aes(x=age_grp)) +
+  #   geom_errorbar(aes(ymin=p_death_symp_lb,
+  #                     ymax=p_death_symp_ub), alpha=0.4) +
+  #   geom_point(aes(y=p_death_symp_med)) +
+  #   scale_y_continuous("Probability death, given symptomatic") +
+  #   scale_x_discrete("Age groups") +
+  #   theme_bw()
+  est_geoid_rrs(tmp$pred_mtx,
+                param_to_est="p_death_symp",
+                geoid_age_mtx=US_age_geoid_pct,
+                geoid_pops=US_age_geoid_pop) %>%
+    mutate(sim=h)
+}
+death_sim_med <- (geoid_death_symp %>%
+                    select(sim, p_death_symp_overall) %>%
+                    distinct() %>%
+                    mutate(dist_from_med=abs(p_death_symp_overall-median(p_death_symp_overall))) %>%
+                    arrange(dist_from_med) %>%
+                    slice(1))$sim
 
-## median sim
-median_sim <- all_params %>%
-  filter(sim==med_sim)
+## hospitalization rate amongst symptomatic
+geoid_hosp_symp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
+  set.seed(h)
+  ## make proportion symptomatic given infected
+  tmp <- est_age_param(age_cat_data=raw_params,
+                       param_to_est="p_hosp_symp",
+                       age_cats=age_grps,
+                       n_preds=n_preds,
+                       study_wt="none")
+  # ggplot(data=tmp$pred_sum, aes(x=age_grp)) +
+  #   geom_errorbar(aes(ymin=p_hosp_symp_lb,
+  #                     ymax=p_hosp_symp_ub), alpha=0.4) +
+  #   geom_point(aes(y=p_hosp_symp_med)) +
+  #   scale_y_continuous("Probability death, given symptomatic") +
+  #   scale_x_discrete("Age groups") +
+  #   theme_bw()
+  est_geoid_rrs(tmp$pred_mtx,
+                param_to_est="p_hosp_symp",
+                geoid_age_mtx=US_age_geoid_pct,
+                geoid_pops=US_age_geoid_pop) %>%
+    mutate(sim=h)
+}
+hosp_sim_med <- (geoid_hosp_symp %>%
+                    select(sim, p_hosp_symp_overall) %>%
+                    distinct() %>%
+                    mutate(dist_from_med=abs(p_hosp_symp_overall-median(p_hosp_symp_overall))) %>%
+                    arrange(dist_from_med) %>%
+                    slice(1))$sim
+
+
+## ICU rate amongst hospitalized
+geoid_icu_hosp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
+  set.seed(h)
+  ## make proportion symptomatic given infected
+  tmp <- est_age_param(age_cat_data=raw_params,
+                       param_to_est="p_icu_hosp",
+                       age_cats=age_grps,
+                       n_preds=n_preds,
+                       study_wt="none")
+  # ggplot(data=tmp$pred_sum, aes(x=age_grp)) +
+  #   geom_errorbar(aes(ymin=p_icu_hosp_lb,
+  #                     ymax=p_icu_hosp_ub), alpha=0.4) +
+  #   geom_point(aes(y=p_icu_hosp_med)) +
+  #   scale_y_continuous("Probability death, given symptomatic") +
+  #   scale_x_discrete("Age groups") +
+  #   theme_bw()
+  est_geoid_rrs(tmp$pred_mtx,
+                param_to_est="p_icu_hosp",
+                geoid_age_mtx=US_age_geoid_pct,
+                geoid_pops=US_age_geoid_pop) %>%
+    mutate(sim=h)
+}
+icu_sim_med <- (geoid_icu_hosp %>%
+                   select(sim, p_icu_hosp_overall) %>%
+                   distinct() %>%
+                   mutate(dist_from_med=abs(p_icu_hosp_overall-median(p_icu_hosp_overall))) %>%
+                   arrange(dist_from_med) %>%
+                   slice(1))$sim
+
+## ventilation rate amongst symptomatic
+geoid_vent_icu <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
+  set.seed(h)
+  ## make proportion symptomatic given infected
+  tmp <- est_age_param(age_cat_data=raw_params,
+                       param_to_est="p_vent_icu",
+                       age_cats=age_grps,
+                       n_preds=n_preds,
+                       study_wt="none")
+  # ggplot(data=tmp$pred_sum, aes(x=age_grp)) +
+  #   geom_errorbar(aes(ymin=p_vent_icu_lb,
+  #                     ymax=p_vent_icu_ub), alpha=0.4) +
+  #   geom_point(aes(y=p_vent_icu_med)) +
+  #   scale_y_continuous("Probability death, given symptomatic") +
+  #   scale_x_discrete("Age groups") +
+  #   theme_bw()
+  est_geoid_rrs(tmp$pred_mtx,
+                param_to_est="p_vent_icu",
+                geoid_age_mtx=US_age_geoid_pct,
+                geoid_pops=US_age_geoid_pop) %>%
+    mutate(sim=h)
+}
+vent_sim_med <- (geoid_vent_icu %>%
+                   select(sim, p_vent_icu_overall) %>%
+                   distinct() %>%
+                   mutate(dist_from_med=abs(p_vent_icu_overall-median(p_vent_icu_overall))) %>%
+                   arrange(dist_from_med) %>%
+                   slice(1))$sim
+
+## get all the median sims
+## make proportion symptomatic given infected
+set.seed(symp_sim_med)
+p_symp_inf <- est_age_param(age_cat_data=raw_params,
+                        param_to_est="p_symp_inf",
+                        age_cats=age_grps,
+                        n_preds=n_preds,
+                        study_wt="none")
+
+## make proportion death given symptomatic
+set.seed(death_sim_med)
+p_death_symp <- est_age_param(age_cat_data=raw_params,
+                        param_to_est="p_death_symp",
+                        age_cats=age_grps,
+                        n_preds=n_preds,
+                        study_wt="none")
+
+## make proportion hospitalized given symptomatic
+set.seed(hosp_sim_med)
+p_hosp_symp <- est_age_param(age_cat_data=raw_params,
+                        param_to_est="p_hosp_symp",
+                        age_cats=age_grps,
+                        n_preds=n_preds,
+                        study_wt="none")
+
+## make proportion symptomatic given infected
+set.seed(icu_sim_med)
+p_icu_hosp <- est_age_param(age_cat_data=raw_params,
+                       param_to_est="p_icu_hosp",
+                       age_cats=age_grps,
+                       n_preds=n_preds,
+                       study_wt="none")
+
+## make proportion symptomatic given infected
+set.seed(vent_sim_med)
+p_vent_icu <- est_age_param(age_cat_data=raw_params,
+                       param_to_est="p_vent_icu",
+                       age_cats=age_grps,
+                       n_preds=n_preds,
+                       study_wt="none")
+
+
+## get all output parameters
+geoid_params <- est_geoid_params(p_symp_inf, US_age_geoid_pct) %>%
+  left_join(est_geoid_params(p_death_symp, US_age_geoid_pct), by="geoid") %>%
+  left_join(est_geoid_params(p_hosp_symp, US_age_geoid_pct), by="geoid") %>%
+  left_join(est_geoid_params(p_icu_hosp, US_age_geoid_pct), by="geoid") %>%
+  left_join(est_geoid_params(p_vent_icu, US_age_geoid_pct), by="geoid") %>%
+  # left_join(est_geoid_params(p_vent_icu,
+  #                            matrix(1, nrow=nrow(US_age_geoid_pct), ncol=1,
+  #                                   dimnames=list(rownames(US_age_geoid_pct),
+  #                                                 "[0,100)"))), by="geoid") %>%
+  left_join(est_geoid_rrs(pred_mtx=p_death_symp$pred_mtx,
+                          param_to_est="death_symp",
+                          geoid_age_mtx=US_age_geoid_pct,
+                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
+  left_join(est_geoid_rrs(pred_mtx=p_hosp_symp$pred_mtx,
+                          param_to_est="hosp_symp",
+                          geoid_age_mtx=US_age_geoid_pct,
+                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
+  left_join(est_geoid_rrs(pred_mtx=p_death_symp$pred_mtx * p_symp_inf$pred_mtx,
+                          param_to_est="death_inf",
+                          geoid_age_mtx=US_age_geoid_pct,
+                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
+  left_join(est_geoid_rrs(pred_mtx=p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx,
+                          param_to_est="hosp_inf",
+                          geoid_age_mtx=US_age_geoid_pct,
+                          geoid_pops=US_age_geoid_pop), by="geoid")
 
 ## county parameter distributions
-median_sim %>%
+geoid_params %>%
   summary()
 
 ## save a csv file
-median_sim %>%
-  select(-sim) %>%
+geoid_params %>%
   write_csv("generated_data/geoid-params.csv")
 
 ## save as a data file that can be called from package
-US_geoid_params <- median_sim %>%
-  select(-sim)
-save(US_geoid_params, file="data/geoid-params.rda")
+US_geoid_params <- geoid_params %>%
+  save(US_geoid_params, file="data/geoid-params.rda")
 
-## get parameter distributions for the median simulation
-set.seed(med_sim)
-expanded_dat <- c()
-## do each param separately
-params <- unique(raw_params$param)
-num_params <- length(params)
-for(i in 1:num_params){
-  param_dat <- filter(raw_params, param==params[i])
-  ## keep the studies separate
-  studies <- unique(param_dat$source)
-  num_studies <- length(studies)
-  for(j in 1:num_studies){
-    tmp <- param_dat %>% filter(source==studies[j])
-    ## break out each age group
-    age_groups <- unique(tmp$age_rng)
-    num_ag <- length(age_groups)
-    for(k in 1:num_ag){
-      tmp_ag <- tmp %>% filter(age_rng==age_groups[k])
-
-      expanded_dat <- bind_rows(expanded_dat,
-                                tibble(param=tmp_ag$param[1],
-                                       study=j,
-                                       age=sample(tmp_ag$ageL[1]:tmp_ag$ageR[1],
-                                                  tmp_ag$N[1], replace=T),
-                                       x=sample(c(rep(1,tmp_ag$X[1]),
-                                                  rep(0,tmp_ag$N[1]-tmp_ag$X[1])),
-                                                tmp_ag$N[1], replace=F)))
-    }
-  }
-}
-
-## make proportion symptomatic given infected
-p_symp_inf <- est_age_param(expanded_dat=expanded_dat,
-                            param_to_est="p_symp_inf",
-                            age_cats=age_grps,
-                            n_preds=n_preds,
-                            study_wt="none")
+## Symptomatic plot
 ggplot(data=p_symp_inf$pred_sum, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=p_symp_inf_lb,
                     ymax=p_symp_inf_ub), alpha=0.4) +
@@ -198,11 +262,6 @@ ggplot(data=p_symp_inf$pred_sum, aes(x=age_grp)) +
   theme_bw()
 
 ## CFR
-p_death_symp <- est_age_param(expanded_dat=expanded_dat,
-                              param_to_est="p_death_symp",
-                              age_cats=age_grps,
-                              n_preds=n_preds,
-                              study_wt="none")
 ggplot(data=p_death_symp$pred_sum, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=p_death_symp_lb,
                     ymax=p_death_symp_ub), alpha=0.4) +
@@ -213,7 +272,7 @@ ggplot(data=p_death_symp$pred_sum, aes(x=age_grp)) +
 
 ## IFR
 p_death_inf <- list(pred_mtx=p_death_symp$pred_mtx * p_symp_inf$pred_mtx,
-                    param_to_est="p_death_inf")
+                   param_to_est="p_death_inf")
 p_death_inf$pred_sum <- p_death_inf$pred_mtx %>%
   as_tibble() %>%
   mutate(age_grp=cut(age_grps[1:(length(age_grps)-1)], age_grps, right=F)) %>%
@@ -227,11 +286,6 @@ p_death_inf$pred_sum <- p_death_inf$pred_mtx %>%
             est_ub=quantile(est, probs=.975))
 
 ## hospitalization rate amongst symptomatic
-p_hosp_symp <- est_age_param(expanded_dat=expanded_dat,
-                             param_to_est="p_hosp_symp",
-                             age_cats=age_grps,
-                             n_preds=n_preds,
-                             study_wt="none")
 ggplot(data=p_hosp_symp$pred_sum, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=p_hosp_symp_lb,
                     ymax=p_hosp_symp_ub), alpha=0.4) +
@@ -268,13 +322,15 @@ p_hosp_inf$pred_sum <- p_hosp_inf$pred_mtx %>%
             est_med=median(est),
             est_lb=quantile(est, probs=.025),
             est_ub=quantile(est, probs=.975))
+ggplot(data=p_hosp_inf$pred_sum, aes(x=age_grp)) +
+  geom_errorbar(aes(ymin=est_lb,
+                    ymax=est_ub), alpha=0.4) +
+  geom_point(aes(y=est_med)) +
+  scale_y_continuous("Probability hospitalized, given infection") +
+  scale_x_discrete("Age groups") +
+  theme_bw()
 
 ## ICU rate amongst hospitalized
-p_icu_hosp <- est_age_param(expanded_dat=expanded_dat,
-                            param_to_est="p_icu_hosp",
-                            age_cats=age_grps,
-                            n_preds=n_preds,
-                            study_wt="none")
 ggplot(data=p_icu_hosp$pred_sum, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=p_icu_hosp_lb,
                     ymax=p_icu_hosp_ub), alpha=0.4) +
@@ -284,11 +340,6 @@ ggplot(data=p_icu_hosp$pred_sum, aes(x=age_grp)) +
   theme_bw()
 
 ## ventilation rate amongst symptomatic
-p_vent_icu <- est_age_param(expanded_dat,
-                            param_to_est="p_vent_icu",
-                            age_cats=c(0,100),
-                            n_preds=n_preds,
-                            study_wt="none")
 ggplot(data=p_vent_icu$pred_sum, aes(x=age_grp)) +
   geom_errorbar(aes(ymin=p_vent_icu_lb,
                     ymax=p_vent_icu_ub), alpha=0.4) +
