@@ -28,6 +28,12 @@ Here is the current list of estimated conditional probabilities:
 
 ### Data sources
 
+All publicly available data used for this project is stored in `data("raw_age_estimates")`, the references for which are listed below.
+In our analysis, we also incorporated private data (not provided).
+Therefore re-running the analysis in `inst/get-conditional-probs.R` may result in different results.
+The results from our full analysis are provided in `data("US_geoid_params")` and `generated_data/param-age-dist.rds`.
+We encourage other users to add their own data when running their analysis.
+
 #### Probability of symptoms given infection and age
 
 [Age-dependent effects in the transmission and control of COVID-19 epidemics](https://cmmid.github.io/topics/covid19/current-patterns-transmission/reports/age_hypotheses/Main%20text%20-%20COVID-19%20dynamics%20in%20children_%20implications%20for%20policy%20-%20no_line_numbers.pdf). Nicholas G. Davies, Petra Klepac, Yang Liu, Kiesha Prem, Mark Jit, CMMID COVID-19 working group, and Rosalind M Eggo.

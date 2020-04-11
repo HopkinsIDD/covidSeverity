@@ -10,7 +10,13 @@ age_grps <- c(seq(0,80,by=10),100)
 
 data("US_age_geoid_pct")
 data("US_age_geoid_pop")
-data("raw_age_estimates")
+## if have access to private files, use this
+raw_age_estimates <- googlesheets4::read_sheet("https://docs.google.com/spreadsheets/d/1pDfQ2SkO--F2WNfjZxx6t9V7K51IZW0bJKV5cwSCZfA/edit#gid=1769840547",
+                                               sheet="age risk") %>%
+  filter(publicly_available==T)
+1
+## otherwise use this
+# data("raw_age_estimates")
 
 ## look at one conditional probability (e.g. proportion symptomatic pSymp_Inf)
 raw_params <- raw_age_estimates %>%
@@ -34,13 +40,6 @@ geoid_symp_inf <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
                           age_cats=age_grps,
                           n_preds=n_preds,
                           study_wt="none")
-  # ggplot(data=tmp$pred_sum, aes(x=age_grp)) +
-  #   geom_errorbar(aes(ymin=p_symp_inf_lb,
-  #                     ymax=p_symp_inf_ub), alpha=0.4) +
-  #   geom_point(aes(y=p_symp_inf_med)) +
-  #   scale_y_continuous("Probability symptomatic, given infected") +
-  #   scale_x_discrete("Age groups") +
-  #   theme_bw()
   est_geoid_rrs(tmp$pred_mtx,
                 param_to_est="p_symp_inf",
                 geoid_age_mtx=US_age_geoid_pct,
@@ -63,13 +62,6 @@ geoid_death_symp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
                        age_cats=age_grps,
                        n_preds=n_preds,
                        study_wt="none")
-  # ggplot(data=tmp$pred_sum, aes(x=age_grp)) +
-  #   geom_errorbar(aes(ymin=p_death_symp_lb,
-  #                     ymax=p_death_symp_ub), alpha=0.4) +
-  #   geom_point(aes(y=p_death_symp_med)) +
-  #   scale_y_continuous("Probability death, given symptomatic") +
-  #   scale_x_discrete("Age groups") +
-  #   theme_bw()
   est_geoid_rrs(tmp$pred_mtx,
                 param_to_est="p_death_symp",
                 geoid_age_mtx=US_age_geoid_pct,
@@ -92,13 +84,6 @@ geoid_hosp_symp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
                        age_cats=age_grps,
                        n_preds=n_preds,
                        study_wt="none")
-  # ggplot(data=tmp$pred_sum, aes(x=age_grp)) +
-  #   geom_errorbar(aes(ymin=p_hosp_symp_lb,
-  #                     ymax=p_hosp_symp_ub), alpha=0.4) +
-  #   geom_point(aes(y=p_hosp_symp_med)) +
-  #   scale_y_continuous("Probability death, given symptomatic") +
-  #   scale_x_discrete("Age groups") +
-  #   theme_bw()
   est_geoid_rrs(tmp$pred_mtx,
                 param_to_est="p_hosp_symp",
                 geoid_age_mtx=US_age_geoid_pct,
@@ -122,13 +107,6 @@ geoid_icu_hosp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
                        age_cats=age_grps,
                        n_preds=n_preds,
                        study_wt="none")
-  # ggplot(data=tmp$pred_sum, aes(x=age_grp)) +
-  #   geom_errorbar(aes(ymin=p_icu_hosp_lb,
-  #                     ymax=p_icu_hosp_ub), alpha=0.4) +
-  #   geom_point(aes(y=p_icu_hosp_med)) +
-  #   scale_y_continuous("Probability death, given symptomatic") +
-  #   scale_x_discrete("Age groups") +
-  #   theme_bw()
   est_geoid_rrs(tmp$pred_mtx,
                 param_to_est="p_icu_hosp",
                 geoid_age_mtx=US_age_geoid_pct,
@@ -151,13 +129,6 @@ geoid_vent_icu <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
                        age_cats=age_grps,
                        n_preds=n_preds,
                        study_wt="none")
-  # ggplot(data=tmp$pred_sum, aes(x=age_grp)) +
-  #   geom_errorbar(aes(ymin=p_vent_icu_lb,
-  #                     ymax=p_vent_icu_ub), alpha=0.4) +
-  #   geom_point(aes(y=p_vent_icu_med)) +
-  #   scale_y_continuous("Probability death, given symptomatic") +
-  #   scale_x_discrete("Age groups") +
-  #   theme_bw()
   est_geoid_rrs(tmp$pred_mtx,
                 param_to_est="p_vent_icu",
                 geoid_age_mtx=US_age_geoid_pct,
@@ -219,10 +190,6 @@ geoid_params <- est_geoid_params(p_symp_inf, US_age_geoid_pct) %>%
   left_join(est_geoid_params(p_hosp_symp, US_age_geoid_pct), by="geoid") %>%
   left_join(est_geoid_params(p_icu_hosp, US_age_geoid_pct), by="geoid") %>%
   left_join(est_geoid_params(p_vent_icu, US_age_geoid_pct), by="geoid") %>%
-  # left_join(est_geoid_params(p_vent_icu,
-  #                            matrix(1, nrow=nrow(US_age_geoid_pct), ncol=1,
-  #                                   dimnames=list(rownames(US_age_geoid_pct),
-  #                                                 "[0,100)"))), by="geoid") %>%
   left_join(est_geoid_rrs(pred_mtx=p_death_symp$pred_mtx,
                           param_to_est="death_symp",
                           geoid_age_mtx=US_age_geoid_pct,

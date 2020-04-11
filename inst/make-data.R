@@ -21,6 +21,7 @@ save(US_age_geoid_pop, file="data/US_age_geoid_pop.rda")
 
 ## pull data for age-specific parameters
 raw_age_estimates <- googlesheets4::read_sheet("https://docs.google.com/spreadsheets/d/1pDfQ2SkO--F2WNfjZxx6t9V7K51IZW0bJKV5cwSCZfA/edit#gid=1769840547",
-                                               sheet="age risk")
+                                               sheet="age risk") %>%
+  filter(publicly_available==T)
 1
 save(raw_age_estimates, file="data/raw_age_estimates.rda")
