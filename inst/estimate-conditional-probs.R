@@ -33,7 +33,7 @@ raw_params <- raw_age_estimates %>%
          X = ifelse(is.na(X),ceiling(N*p),X))
 
 geoid_symp_inf <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
-  set.seed(h)
+  # set.seed(h)
   ## make proportion symptomatic given infected
   tmp <- est_age_param(age_cat_data=raw_params,
                           param_to_est="p_symp_inf",
@@ -55,7 +55,7 @@ symp_sim_med <- (geoid_symp_inf %>%
 
 ## CFR
 geoid_death_symp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
-  set.seed(h)
+  # set.seed(h)
   ## make proportion symptomatic given infected
   tmp <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_death_symp",
@@ -77,7 +77,7 @@ death_sim_med <- (geoid_death_symp %>%
 
 ## hospitalization rate amongst symptomatic
 geoid_hosp_symp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
-  set.seed(h)
+  # set.seed(h)
   ## make proportion symptomatic given infected
   tmp <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_hosp_symp",
@@ -100,7 +100,7 @@ hosp_sim_med <- (geoid_hosp_symp %>%
 
 ## ICU rate amongst hospitalized
 geoid_icu_hosp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
-  set.seed(h)
+  # set.seed(h)
   ## make proportion symptomatic given infected
   tmp <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_icu_hosp",
@@ -122,7 +122,7 @@ icu_sim_med <- (geoid_icu_hosp %>%
 
 ## ventilation rate amongst symptomatic
 geoid_vent_icu <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
-  set.seed(h)
+  # set.seed(h)
   ## make proportion symptomatic given infected
   tmp <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_vent_icu",
@@ -144,7 +144,7 @@ vent_sim_med <- (geoid_vent_icu %>%
 
 ## get all the median sims
 ## make proportion symptomatic given infected
-set.seed(symp_sim_med)
+# set.seed(symp_sim_med)
 p_symp_inf <- est_age_param(age_cat_data=raw_params,
                         param_to_est="p_symp_inf",
                         age_cats=age_grps,
@@ -152,7 +152,7 @@ p_symp_inf <- est_age_param(age_cat_data=raw_params,
                         study_wt="none")
 
 ## make proportion death given symptomatic
-set.seed(death_sim_med)
+# set.seed(death_sim_med)
 p_death_symp <- est_age_param(age_cat_data=raw_params,
                         param_to_est="p_death_symp",
                         age_cats=age_grps,
@@ -160,7 +160,7 @@ p_death_symp <- est_age_param(age_cat_data=raw_params,
                         study_wt="none")
 
 ## make proportion hospitalized given symptomatic
-set.seed(hosp_sim_med)
+# set.seed(hosp_sim_med)
 p_hosp_symp <- est_age_param(age_cat_data=raw_params,
                         param_to_est="p_hosp_symp",
                         age_cats=age_grps,
@@ -168,7 +168,7 @@ p_hosp_symp <- est_age_param(age_cat_data=raw_params,
                         study_wt="none")
 
 ## make proportion symptomatic given infected
-set.seed(icu_sim_med)
+# set.seed(icu_sim_med)
 p_icu_hosp <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_icu_hosp",
                        age_cats=age_grps,
@@ -176,7 +176,7 @@ p_icu_hosp <- est_age_param(age_cat_data=raw_params,
                        study_wt="none")
 
 ## make proportion symptomatic given infected
-set.seed(vent_sim_med)
+# set.seed(vent_sim_med)
 p_vent_icu <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_vent_icu",
                        age_cats=age_grps,
