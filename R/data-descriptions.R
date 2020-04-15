@@ -52,7 +52,23 @@ NULL
 #'
 #' A data frame with the median conditional probabilities for each parameter for each GEOID
 #'
-#' @format tbl, where rows are GEOIDs and columns are parameters
+#' @format tbl, where rows are GEOIDs and columns are parameters:
+#' \itemize{
+#'   \item \code{geoid} the GEOID of interest
+#'   \item \code{p_symp_inf} probability of being symptomatic given infected
+#'   \item \code{p_death_symp} probability of death given symptomatic
+#'   \item \code{p_hosp_symp} probability of hospitalization given symptomatic
+#'   \item \code{p_icu_hosp} probability of going to the ICU given hospitalized
+#'   \item \code{p_vent_icu} probability of needing invasive mechanized ventilation given ICU
+#'   \item \code{rr_death_symp} the relative risk of death given symptomatic (vs. US average)
+#'   \item \code{death_symp_overall} US average probability of death given symptomatic
+#'   \item \code{rr_hosp_symp} the relative risk of hospitalization given symptomatic (vs. US average)
+#'   \item \code{hosp_symp_overall} US average probability of hospitalization given symptomatic
+#'   \item \code{rr_death_inf} the relative risk of death given infection (vs. US average)
+#'   \item \code{death_inf_overall} US average probability of death given infection
+#'   \item \code{rr_hosp_inf} the relative risk of hospitalization given infection (vs. US average)
+#'   \item \code{hosp_inf_overall} US average probability of hospitalization given infection
+#' }
 #' @docType data
 #' @name US_geoid_params
 #' @usage data(US_geoid_params)
