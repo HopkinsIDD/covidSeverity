@@ -158,6 +158,8 @@ est_geoid_params <- function(age_params,
   return(geoid_preds)
 }
 
+
+
 #' Estimate relative rates for GEOIDs
 #'
 #' @param pred_mtx matrix of predicted parameter values by age category and simulation from est_age_param()$pred_mtx
@@ -181,7 +183,7 @@ est_geoid_rrs <- function(pred_mtx,
                  values_to="est") %>%
     group_by(pred) %>%
     summarize(total_est=sum(est)) %>%
-    mutate(total_pop=sum(US_age_geoid_pop),
+    mutate(total_pop=sum(geoid_pops),
            overall_rate=total_est/total_pop)
 
   ## get geoid relative rates per sim
@@ -199,6 +201,8 @@ est_geoid_rrs <- function(pred_mtx,
                                   paste0(param_to_est, "_overall"))
   return(geoid_rrs)
 }
+
+
 
 #' Expanded age category data
 #'
