@@ -4,7 +4,9 @@
 \name{US_age_geoid_pop}
 \alias{US_age_geoid_pop}
 \title{US population by age category and GEOID}
-\format{A matrix where rows are GEOIDs and columns are age groups}
+\format{
+A matrix where rows are GEOIDs and columns are age groups
+}
 \usage{
 data(US_age_geoid_pop)
 }

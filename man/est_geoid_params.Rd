@@ -4,12 +4,12 @@
 \alias{est_geoid_params}
 \title{Find parameter values for GEOIDs}
 \usage{
-est_geoid_params(age_params, geoid_age_mtx = US_age_geoid_pct)
+est_geoid_params(pred_mtx, param_to_est, geoid_age_mtx = US_age_geoid_pct)
 }
 \arguments{
-\item{age_params}{list, output of est_age_param()}
-
 \item{geoid_age_mtx}{matrix of population by age and GEOID (e.g. data(US_age_geoid_pct))}
+
+\item{age_params}{list, output of est_age_param()}
 }
 \value{
 tbl, median probabilities for the given parameter by GEOID
