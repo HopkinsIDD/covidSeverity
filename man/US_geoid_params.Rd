@@ -4,7 +4,8 @@
 \name{US_geoid_params}
 \alias{US_geoid_params}
 \title{Age-adjusted parameters for each US GEOID}
-\format{tbl, where rows are GEOIDs and columns are parameters:
+\format{
+tbl, where rows are GEOIDs and columns are parameters:
 \itemize{
   \item \code{geoid} the GEOID of interest
   \item \code{p_symp_inf} probability of being symptomatic given infected
@@ -20,7 +21,8 @@
   \item \code{death_inf_overall} US average probability of death given infection
   \item \code{rr_hosp_inf} the relative risk of hospitalization given infection (vs. US average)
   \item \code{hosp_inf_overall} US average probability of hospitalization given infection
-}}
+}
+}
 \usage{
 data(US_geoid_params)
 }

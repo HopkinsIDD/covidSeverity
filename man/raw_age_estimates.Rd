@@ -4,7 +4,8 @@
 \name{raw_age_estimates}
 \alias{raw_age_estimates}
 \title{Raw age-specific estimates}
-\format{tbl with the following columns
+\format{
+tbl with the following columns
 \itemize{
   \item \code{param} character string of a conditional probability with the format p_x_y that is equivalent to P(X | Y)
   \item \code{USE_pipeline} logical, is the estimate used in the model pipeline?
@@ -19,7 +20,8 @@
   \item \code{data_date} date, when was the data collected
   \item \code{publish_date} date, when was the source published
   \item \code{source} character string, where is the data from
-}}
+}
+}
 \usage{
 data(raw_age_estimates)
 }

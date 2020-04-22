@@ -33,7 +33,7 @@ raw_params <- raw_age_estimates %>%
          X = ifelse(is.na(X),ceiling(N*p),X))
 
 geoid_symp_inf <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
-  # set.seed(h)
+  set.seed(h)
   ## make proportion symptomatic given infected
   tmp <- est_age_param(age_cat_data=raw_params,
                           param_to_est="p_symp_inf",
@@ -55,7 +55,7 @@ symp_sim_med <- (geoid_symp_inf %>%
 
 ## CFR
 geoid_death_symp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
-  # set.seed(h)
+  set.seed(h)
   ## make proportion symptomatic given infected
   tmp <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_death_symp",
@@ -77,7 +77,7 @@ death_sim_med <- (geoid_death_symp %>%
 
 ## hospitalization rate amongst symptomatic
 geoid_hosp_symp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
-  # set.seed(h)
+  set.seed(h)
   ## make proportion symptomatic given infected
   tmp <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_hosp_symp",
@@ -100,7 +100,7 @@ hosp_sim_med <- (geoid_hosp_symp %>%
 
 ## ICU rate amongst hospitalized
 geoid_icu_hosp <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
-  # set.seed(h)
+  set.seed(h)
   ## make proportion symptomatic given infected
   tmp <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_icu_hosp",
@@ -122,7 +122,7 @@ icu_sim_med <- (geoid_icu_hosp %>%
 
 ## ventilation rate amongst symptomatic
 geoid_vent_icu <- foreach(h=1:n_sims, .combine=rbind) %dopar% {
-  # set.seed(h)
+  set.seed(h)
   ## make proportion symptomatic given infected
   tmp <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_vent_icu",
@@ -144,7 +144,7 @@ vent_sim_med <- (geoid_vent_icu %>%
 
 ## get all the median sims
 ## make proportion symptomatic given infected
-# set.seed(symp_sim_med)
+set.seed(symp_sim_med)
 p_symp_inf <- est_age_param(age_cat_data=raw_params,
                         param_to_est="p_symp_inf",
                         age_cats=age_grps,
@@ -152,7 +152,7 @@ p_symp_inf <- est_age_param(age_cat_data=raw_params,
                         study_wt="none")
 
 ## make proportion death given symptomatic
-# set.seed(death_sim_med)
+set.seed(death_sim_med)
 p_death_symp <- est_age_param(age_cat_data=raw_params,
                         param_to_est="p_death_symp",
                         age_cats=age_grps,
@@ -160,23 +160,23 @@ p_death_symp <- est_age_param(age_cat_data=raw_params,
                         study_wt="none")
 
 ## make proportion hospitalized given symptomatic
-# set.seed(hosp_sim_med)
+set.seed(hosp_sim_med)
 p_hosp_symp <- est_age_param(age_cat_data=raw_params,
                         param_to_est="p_hosp_symp",
                         age_cats=age_grps,
                         n_preds=n_preds,
                         study_wt="none")
 
-## make proportion symptomatic given infected
-# set.seed(icu_sim_med)
+## make proportion ICU given hospitalized
+set.seed(icu_sim_med)
 p_icu_hosp <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_icu_hosp",
                        age_cats=age_grps,
                        n_preds=n_preds,
                        study_wt="none")
 
-## make proportion symptomatic given infected
-# set.seed(vent_sim_med)
+## make proportion ventilated given ICU
+set.seed(vent_sim_med)
 p_vent_icu <- est_age_param(age_cat_data=raw_params,
                        param_to_est="p_vent_icu",
                        age_cats=age_grps,
@@ -185,19 +185,28 @@ p_vent_icu <- est_age_param(age_cat_data=raw_params,
 
 
 ## get all output parameters
-geoid_params <- est_geoid_params(p_symp_inf, US_age_geoid_pct) %>%
-  left_join(est_geoid_params(p_death_symp, US_age_geoid_pct), by="geoid") %>%
-  left_join(est_geoid_params(p_hosp_symp, US_age_geoid_pct), by="geoid") %>%
-  left_join(est_geoid_params(p_icu_hosp, US_age_geoid_pct), by="geoid") %>%
-  left_join(est_geoid_params(p_vent_icu, US_age_geoid_pct), by="geoid") %>%
-  left_join(est_geoid_rrs(pred_mtx=p_death_symp$pred_mtx,
-                          param_to_est="death_symp",
-                          geoid_age_mtx=US_age_geoid_pct,
-                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
-  left_join(est_geoid_rrs(pred_mtx=p_hosp_symp$pred_mtx,
-                          param_to_est="hosp_symp",
-                          geoid_age_mtx=US_age_geoid_pct,
-                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
+US_geoid_params <- est_geoid_params(p_symp_inf$pred_mtx,
+                                    param_to_est=p_symp_inf$param_to_est,
+                                    US_age_geoid_pct) %>%
+  left_join(est_geoid_params(p_death_symp$pred_mtx * p_symp_inf$pred_mtx,
+                             param_to_est="p_death_inf",
+                             US_age_geoid_pct), by="geoid") %>%
+  left_join(est_geoid_params(p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx,
+                             param_to_est="p_hosp_inf",
+                             US_age_geoid_pct), by="geoid") %>%
+  left_join(est_geoid_params(p_icu_hosp$pred_mtx * p_hosp_symp$pred_mtx *
+                               p_symp_inf$pred_mtx,
+                             param_to_est="p_icu_inf",
+                             US_age_geoid_pct), by="geoid") %>%
+  left_join(est_geoid_params(p_vent_icu$pred_mtx * p_icu_hosp$pred_mtx *
+                               p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx,
+                             param_to_est="p_vent_inf",
+                             US_age_geoid_pct), by="geoid") %>%
+  mutate(p_death_symp=p_death_inf/p_symp_inf,
+         p_hosp_symp=p_hosp_inf/p_symp_inf,
+         p_mild_symp=1-p_hosp_symp,
+         p_icu_hosp=p_icu_inf/p_hosp_inf,
+         p_vent_icu=p_vent_inf/p_icu_inf) %>%
   left_join(est_geoid_rrs(pred_mtx=p_death_symp$pred_mtx * p_symp_inf$pred_mtx,
                           param_to_est="death_inf",
                           geoid_age_mtx=US_age_geoid_pct,
@@ -205,19 +214,32 @@ geoid_params <- est_geoid_params(p_symp_inf, US_age_geoid_pct) %>%
   left_join(est_geoid_rrs(pred_mtx=p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx,
                           param_to_est="hosp_inf",
                           geoid_age_mtx=US_age_geoid_pct,
+                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
+  left_join(est_geoid_rrs(pred_mtx=p_symp_inf$pred_mtx,
+                          param_to_est="symp_inf",
+                          geoid_age_mtx=US_age_geoid_pct,
+                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
+  left_join(est_geoid_rrs(pred_mtx=p_icu_hosp$pred_mtx * p_hosp_symp$pred_mtx *
+                            p_symp_inf$pred_mtx,
+                          param_to_est="icu_inf",
+                          geoid_age_mtx=US_age_geoid_pct,
+                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
+  left_join(est_geoid_rrs(pred_mtx=p_vent_icu$pred_mtx * p_icu_hosp$pred_mtx *
+                            p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx,
+                          param_to_est="vent_inf",
+                          geoid_age_mtx=US_age_geoid_pct,
                           geoid_pops=US_age_geoid_pop), by="geoid")
 
 ## county parameter distributions
-geoid_params %>%
+US_geoid_params %>%
   summary()
 
 ## save a csv file
-geoid_params %>%
+US_geoid_params %>%
   write_csv("generated_data/geoid-params.csv")
 
 ## save as a data file that can be called from package
-US_geoid_params <- geoid_params %>%
-  save(US_geoid_params, file="data/geoid-params.rda")
+usethis::use_data(US_geoid_params, overwrite=T)
 
 ## Symptomatic plot
 ggplot(data=p_symp_inf$pred_sum, aes(x=age_grp)) +

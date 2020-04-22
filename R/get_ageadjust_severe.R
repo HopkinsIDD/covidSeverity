@@ -45,11 +45,17 @@ est_age_param <- function(age_cat_data,
   if(!(param_to_est %in% age_cat_data$param)){
     stop("param_to_est must exist within expanded_dat$param")
   }
+  ## expand categorical age data into individual observations
+  ## with randomly assigned ages
   param_dat <- expand_age_data(age_cat_data=age_cat_data,
                                param_to_est=param_to_est)
 
+  ## create a prediction data frame that has the age range for each study
+  ## and a weight to apply for each study
   studies <- unique(param_dat$study)
   num_studies <- length(studies)
+  ## if study_wt is "none" then the only important aspect of the prediction
+  ## set is covering the entire age range
   if(study_wt=="none"){
     param_pred_dat <- tibble(study=as.factor(1),
                              age=0:99,
@@ -145,16 +151,17 @@ est_age_param <- function(age_cat_data,
 #' @export
 #'
 #' @examples
-est_geoid_params <- function(age_params,
+est_geoid_params <- function(pred_mtx,
+                             param_to_est,
                              geoid_age_mtx=US_age_geoid_pct){
-  geoid_preds <- geoid_age_mtx %*% age_params$pred_mtx %>%
+  geoid_preds <- geoid_age_mtx %*% pred_mtx %>%
     as_tibble(rownames="geoid") %>%
     pivot_longer(cols=-geoid,
                  names_to="pred",
                  values_to="est") %>%
     group_by(geoid) %>%
     summarize(p_est=median(est))
-  colnames(geoid_preds)[2] <- age_params$param_to_est
+  colnames(geoid_preds)[2] <- param_to_est
   return(geoid_preds)
 }
 
