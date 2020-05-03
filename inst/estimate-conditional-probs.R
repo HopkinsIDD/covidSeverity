@@ -4,19 +4,18 @@ options(scipen=999)
 library(covidSeverity)
 library(doMC)
 registerDoMC(10)
-n_sims <- 40
+n_sims <- 100
 n_preds <- 1e3
 age_grps <- c(seq(0,80,by=10),100)
 
 data("US_age_geoid_pct")
 data("US_age_geoid_pop")
 ## if have access to private files, use this
-raw_age_estimates <- googlesheets4::read_sheet("https://docs.google.com/spreadsheets/d/1pDfQ2SkO--F2WNfjZxx6t9V7K51IZW0bJKV5cwSCZfA/edit#gid=1769840547",
-                                               sheet="age risk") %>%
-  filter(publicly_available==T)
-1
+# raw_age_estimates <- googlesheets4::read_sheet("https://docs.google.com/spreadsheets/d/1pDfQ2SkO--F2WNfjZxx6t9V7K51IZW0bJKV5cwSCZfA/edit#gid=1769840547",
+#                                                sheet="age risk")
+# 1
 ## otherwise use this
-# data("raw_age_estimates")
+data("raw_age_estimates")
 
 ## look at one conditional probability (e.g. proportion symptomatic pSymp_Inf)
 raw_params <- raw_age_estimates %>%
@@ -228,7 +227,11 @@ US_geoid_params <- est_geoid_params(p_symp_inf$pred_mtx,
                             p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx,
                           param_to_est="vent_inf",
                           geoid_age_mtx=US_age_geoid_pct,
-                          geoid_pops=US_age_geoid_pop), by="geoid")
+                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
+  mutate(p_ihiv=p_vent_inf,
+         p_ihi=p_icu_inf-p_vent_inf,
+         p_ih=p_hosp_inf-p_icu_inf,
+         p_i=1-p_hosp_inf)
 
 ## county parameter distributions
 US_geoid_params %>%
