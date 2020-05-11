@@ -111,3 +111,40 @@ raw_age_estimates <- googlesheets4::read_sheet("https://docs.google.com/spreadsh
   filter(publicly_available==T)
 1
 usethis::use_data(raw_age_estimates, overwrite=T)
+
+
+
+
+
+
+
+
+# Country Age Data --------------------------------------------------------
+
+library(globaltoolboxlite)
+pop_data <- read_csv("raw_data/WPP2019_POP.csv", na=c("NA", "...",""," "))
+pop_data <- pop_data %>%
+  mutate(country = stringi::stri_trans_general(location, "Latin-ASCII")) %>%
+  filter(year==max(year))
+
+# print for a double check
+#print(pop_data$location)
+wpp2019 <- pop_data[,-(1:4)] %>%
+  setNames(gsub("-", "_", names(.))) %>%
+  pivot_longer(cols = -country, 
+               names_to = "age_cat", 
+               values_to = "pop", 
+               values_ptypes = list(pop = "integer")) %>%
+  mutate(pop = as.integer(pop))
+
+wpp2019 <- wpp2019 %>% 
+  mutate(ISO = globaltoolboxlite::get_iso(country)) %>%
+  group_by(country) %>%
+  mutate(prop = round(pop / sum(pop),4)) %>%
+  ungroup() %>%
+  separate(age_cat, into=c("age_l","age_r"), sep="_", remove=FALSE) %>%
+  rename(age = age_cat) %>% 
+  dplyr::select(country, ISO, everything())
+
+usethis::use_data(wpp2019, overwrite = TRUE)
+

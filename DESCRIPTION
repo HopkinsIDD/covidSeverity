@@ -8,7 +8,7 @@ Authors@R:
              role = c("aut", "cre")),
       person(given = c("Shaun", "A."),
              family = "Truelove",
-             role = "ctb",
+             role = c("aut","ctb"),
              email = "shauntruelove@jhu.edu"),
       person(given = c("Kyra", "H."),
              family = "Grantz",
@@ -19,7 +19,12 @@ Depends:
     R (>= 3.5.0)
 Imports:
     tidycensus,
-    mgcv
+    mgcv,
+    foreach,
+    doParallel,
+    readr,
+    tidyselect,
+    stringr
 Suggests: knitr, rmarkdown, googlesheets4
 VignetteBuilder: knitr
 License: What license it uses
