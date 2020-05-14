@@ -117,8 +117,8 @@ age_pop_data <- load_worldpop_age(shp="../raw_data/BGD/bgd_admbnda_adm2_bbs_2018
                                   country="BGD", year="2020", save_dir="../raw_data", cores=4)
 
 age_pop_10yr <- convert_wp_10yr(age_pop_data)
-readr::write_csv(age_pop_10yr, "../raw_data/BDG_age_pop_10yr.csv")
-readr::write_csv(age_pop_data, "../raw_data/BDG_age_pop_data.csv")
+readr::write_csv(age_pop_10yr, "../raw_data/BDG/BDG_age_pop_10yr.csv")
+readr::write_csv(age_pop_data, "../raw_data/BDG/BDG_age_pop_data.csv")
 
 ```
 
@@ -134,6 +134,7 @@ age_pop_10yr <- age_pop_10yr %>%
 # make a geoid
 age_pop_10yr <- age_pop_10yr %>% 
     dplyr::mutate(geoid = as.character(stringr::str_pad(as.integer(as.factor(adm2)), 5, "left", 0)))
+readr::write_csv(age_pop_10yr, "../raw_data/BDG/BDG_age_pop_10yr.csv")
 
 
 # Estimate parameters
@@ -143,7 +144,11 @@ geo_age_params <- get_ageadjustments(age_pop_10yr,
                                      n_preds=1000,
                                      age_grps=c(seq(0,80,by=10),100),
                                      googlesheet_access=TRUE,
-                                     output_dir="../raw_data",
+                                     output_dir="../raw_data/BGD",
                                      pop_name=NULL)
+
+# Save a list of names and geoids for matching
+
+
 ```
 
