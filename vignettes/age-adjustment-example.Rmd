@@ -100,3 +100,21 @@ geo_age_params <- get_ageadjustments( age_data_usa,
 ```
 
 
+
+# Bangladesh using WorldPop
+
+Users need to download their own shapefiles for this.
+
+```{r}
+
+filenames <- download_worldpop_agetifs(country="BGD", year="2020", save_dir="raw_data", cores=4)
+
+
+age_pop_data <- load_worldpop_age(shp="raw_data/BGD/bgd_admbnda_adm2_bbs_20180410/bgd_admbnda_adm2_bbs_20180410.shp", 
+                                  country="BGD", year="2020", save_dir="raw_data", cores=4)
+
+age_pop_10yr <- convert_wp_10yr(age_pop_data)
+
+
+```
+

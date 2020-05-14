@@ -25,7 +25,13 @@ Imports:
     readr,
     tidyselect,
     stringr
-Suggests: knitr, rmarkdown, googlesheets4
+Suggests: knitr, 
+    rmarkdown, 
+    googlesheets4,
+    exactextractr,
+    RCurl,
+    raster,
+    sf
 VignetteBuilder: knitr
 License: What license it uses
 Encoding: UTF-8
