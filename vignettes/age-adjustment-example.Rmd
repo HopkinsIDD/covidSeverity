@@ -105,16 +105,45 @@ geo_age_params <- get_ageadjustments(age_data_world,
 
 Users need to download their own shapefiles for this.
 
+
+### First get the age distributions by Admin level 2
+
 ```{r}
 
-filenames <- download_worldpop_agetifs(country="BGD", year="2020", save_dir="raw_data", cores=4)
+filenames <- download_worldpop_agetifs(country="BGD", year="2020", save_dir="../raw_data", cores=4)
 
 
-age_pop_data <- load_worldpop_age(shp="raw_data/BGD/bgd_admbnda_adm2_bbs_20180410/bgd_admbnda_adm2_bbs_20180410.shp", 
-                                  country="BGD", year="2020", save_dir="raw_data", cores=4)
+age_pop_data <- load_worldpop_age(shp="../raw_data/BGD/bgd_admbnda_adm2_bbs_20180410/bgd_admbnda_adm2_bbs_20180410.shp", 
+                                  country="BGD", year="2020", save_dir="../raw_data", cores=4)
 
 age_pop_10yr <- convert_wp_10yr(age_pop_data)
+readr::write_csv(age_pop_10yr, "../raw_data/BDG_age_pop_10yr.csv")
+readr::write_csv(age_pop_data, "../raw_data/BDG_age_pop_data.csv")
+
+```
+
+### Now estimate the severity parameters for all Admin 2 locations in the country
+```{r}
+
+# Get proportions
+age_pop_10yr <- age_pop_10yr %>% 
+    dplyr::group_by(adm2) %>%
+    dplyr::mutate(prop = pop / sum(pop)) %>%
+    dplyr::ungroup() 
+
+# make a geoid
+age_pop_10yr <- age_pop_10yr %>% 
+    dplyr::mutate(geoid = as.character(stringr::str_pad(as.integer(as.factor(adm2)), 5, "left", 0)))
 
 
+# Estimate parameters
+geo_age_params <- get_ageadjustments(age_pop_10yr,
+                                     cores=4,
+                                     n_sims=40,
+                                     n_preds=1000,
+                                     age_grps=c(seq(0,80,by=10),100),
+                                     googlesheet_access=TRUE,
+                                     output_dir="../raw_data",
+                                     pop_name=NULL)
 ```
 
