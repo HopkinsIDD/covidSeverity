@@ -10,7 +10,8 @@ load_worldpop_age(
   country = "BGD",
   year = "2020",
   save_dir = "raw_data",
-  cores = 4
+  cores = 4,
+  loc_var = NA
 )
 }
 \arguments{
@@ -23,6 +24,8 @@ load_worldpop_age(
 \item{save_dir}{directory where to save geotiff files}
 
 \item{cores}{number of cores to parallelize over}
+
+\item{loc_var}{name of location name or id variable, if want to reduce data to this and population data}
 }
 \value{
 long age population data by admin level 2

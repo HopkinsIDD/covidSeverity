@@ -277,6 +277,7 @@ download_worldpop_agetifs <- function(country="BGD", year="2020", save_dir="raw_
 ##' @param year Year of population data (2000 to 2020)
 ##' @param save_dir directory where to save geotiff files
 ##' @param cores number of cores to parallelize over
+##' @param loc_var name of location name or id variable, if want to reduce data to this and population data
 ##'
 ##' @return long age population data by admin level 2
 ##'
@@ -291,7 +292,7 @@ download_worldpop_agetifs <- function(country="BGD", year="2020", save_dir="raw_
 ##'
 ##' @export
 ##' 
-load_worldpop_age <- function(shp, country="BGD", year="2020", save_dir="raw_data", cores=4) {
+load_worldpop_age <- function(shp, country="BGD", year="2020", save_dir="raw_data", cores=4, loc_var=NA) {
   
   url <- paste0("ftp://ftp.worldpop.org.uk/GIS/AgeSex_structures/Global_2000_2020/", year, "/", country, "/")
   filenames = RCurl::getURL(url, ftp.use.epsv = FALSE, dirlistonly = TRUE)
