@@ -242,7 +242,7 @@ load_worldpop <- function(wp_file, shp) {
 ##' 
 download_worldpop_agetifs <- function(country="BGD", year="2020", save_dir="raw_data", cores=4){
   
-  dir.create(save_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(save_dir,country), recursive = TRUE, showWarnings = FALSE)
   
   url <- paste0("ftp://ftp.worldpop.org.uk/GIS/AgeSex_structures/Global_2000_2020/", year, "/", country, "/")
   filenames = RCurl::getURL(url, ftp.use.epsv = FALSE, dirlistonly = TRUE)
