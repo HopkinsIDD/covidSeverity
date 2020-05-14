@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_chunk$set(root = "..")
+knitr::opts_chunk$set(root = here::here())
 library(tidyverse)
 library(covidSeverity)
 
@@ -24,14 +24,14 @@ library(covidSeverity)
 
 
 age_data_long <- bind_rows(
-    data.frame(geoid = "010101",
-               age_l = c(0, 5, 12, 18, 60, 80),
-               age_r = c(5, 12, 18, 60, 80, 100),
-               pop = c(112200, 132000, 81000, 252600, 21600, 600), stringsAsFactors = FALSE),
-    data.frame(geoid = "020101",
-               age_l = c(0, 5, 12, 18, 60, 80),
-               age_r = c(5, 12, 18, 60, 80, 100),
-               pop = c(110000, 152000, 60000, 202600, 27600, 1200), stringsAsFactors = FALSE))
+  data.frame(geoid = "010101",
+             age_l = c(0, 5, 12, 18, 60, 80),
+             age_r = c(5, 12, 18, 60, 80, 100),
+             pop = c(112200, 132000, 81000, 252600, 21600, 600), stringsAsFactors = FALSE),
+  data.frame(geoid = "020101",
+             age_l = c(0, 5, 12, 18, 60, 80),
+             age_r = c(5, 12, 18, 60, 80, 100),
+             pop = c(110000, 152000, 60000, 202600, 27600, 1200), stringsAsFactors = FALSE))
 #age_data <- age_data_long 
 
 
@@ -55,13 +55,13 @@ age_data10yr <- make_10yr_age_data(age_data_long)
 ## Run age-adjustment
 Using the correctly setup data, we can run the age adjustment parameters estimation:
 ```{r}
-geo_age_params <- get_ageadjustments( age_data10yr,
-                                cores=4, 
-                                n_sims=40,
-                                n_preds=1000,
-                                age_grps=c(seq(0,80,by=10),100),
-                                googlesheet_access=TRUE,
-                                output_dir="output")
+geo_age_params <- get_ageadjustments(age_data10yr,
+                                     cores=4,
+                                     n_sims=40,
+                                     n_preds=1000,
+                                     age_grps=c(seq(0,80,by=10),100),
+                                     googlesheet_access=TRUE,
+                                     output_dir="output")
 ```
 
 
@@ -74,29 +74,29 @@ geo_age_params <- get_ageadjustments( age_data10yr,
 age_data_usa <- get_country_age_pop(ISO3="USA") %>% mutate(geoid="USA")
 
 geo_age_params <- get_ageadjustments( age_data_usa,
-                                cores=4, 
-                                n_sims=40,
-                                n_preds=1000,
-                                age_grps=c(seq(0,80,by=10),100),
-                                googlesheet_access=TRUE,
-                                output_dir="output",
-                                pop_name = "USA")
+                                      cores=4, 
+                                      n_sims=40,
+                                      n_preds=1000,
+                                      age_grps=c(seq(0,80,by=10),100),
+                                      googlesheet_access=TRUE,
+                                      output_dir="output",
+                                      pop_name = "USA")
 ```
 
 ## All Countries
 ```{r, eval=FALSE}
 
 # Get age - already in 10yr age groups
-age_data_usa <- get_allcountries_age_pop() %>% mutate(geoid=country)
+age_data_world <- get_allcountries_age_pop() %>% mutate(geoid=country)
 
-geo_age_params <- get_ageadjustments( age_data_usa,
-                                cores=4, 
-                                n_sims=40,
-                                n_preds=1000,
-                                age_grps=c(seq(0,80,by=10),100),
-                                googlesheet_access=TRUE,
-                                output_dir="output",
-                                pop_name = "AllCountries")
+geo_age_params <- get_ageadjustments(age_data_world,
+                                     cores=4, 
+                                     n_sims=40,
+                                     n_preds=1000,
+                                     age_grps=c(seq(0,80,by=10),100),
+                                     googlesheet_access=TRUE,
+                                     output_dir="output",
+                                     pop_name = "AllCountries")
 ```
 
 
