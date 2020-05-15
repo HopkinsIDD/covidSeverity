@@ -374,6 +374,7 @@ convert_wp_10yr <- function(age_pop_data){
     dplyr::group_by(age10, adm2) %>%
     dplyr::summarise(pop = sum(pop), pop_m = sum(pop_m), pop_f = sum(pop_f)) %>%
     dplyr::mutate(age_l = age10, age_r = age10+9) %>% 
+    dplyr::mutate(age_r = ifelse(age_l==80, 100, age_r)) %>%
     tibble::as_tibble() %>%
     dplyr::mutate(age = paste(age_l, age_r, sep="_")) %>%
     dplyr::select(-age10)
