@@ -147,8 +147,6 @@ geo_age_params <- get_ageadjustments(age_pop_10yr,
                                      output_dir="../raw_data/BGD",
                                      pop_name=NULL)
 
-# Save a list of names and geoids for matching
-
 
 ```
 

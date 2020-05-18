@@ -116,6 +116,21 @@ make_10yr_age_data <- function(age_data, age_range_pred=0:89){
 #'
 setup_age_data <- function(age_data){    
     
+    
+    # Make sure it matches the age groups of the probabilities
+    age_data <- age_data %>%
+        dplyr::group_by(geoid) %>%
+        tidyr::separate(age, into=c("age_l", "age_r"), remove=FALSE) %>%
+        dplyr::mutate(age_l = ifelse(as.integer(age_l)>=80, 80, age_l),
+                      age_r = ifelse(as.integer(age_r)>=81, 100, age_r)) %>%
+        dplyr::group_by(geoid, age_l, age_r) %>% 
+        dplyr::summarise(pop = sum(pop),
+                         prop = sum(prop)) %>%
+        dplyr::mutate(age = paste(age_l, age_r, sep="_")) %>%
+        tidyr::as_tibble() %>%
+        dplyr::select(-age_l, -age_r)
+    
+    
     #convert long data to matrix
     age_matrix <- age_data %>% tidyr::pivot_wider(id_cols=geoid, 
                                     names_from = age, 
@@ -243,7 +258,7 @@ get_ageadjustments <- function( age_data,
                                 pop_name = NULL) {
     
     # make sure there is an output directory
-    dir.create(output_dir, recursive = TRUE)
+    dir.create(output_dir, recursive = TRUE, showWarnings=FALSE)
     print(paste0("Output saved in ",output_dir))
     
     # get cleaned age data
