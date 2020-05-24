@@ -11,7 +11,8 @@ load_worldpop_age(
   year = "2020",
   save_dir = "raw_data",
   cores = 4,
-  loc_var = NA
+  loc_var = NA,
+  add_pop_to_shapefile = TRUE
 )
 }
 \arguments{
@@ -26,6 +27,8 @@ load_worldpop_age(
 \item{cores}{number of cores to parallelize over}
 
 \item{loc_var}{name of location name or id variable, if want to reduce data to this and population data}
+
+\item{add_pop_to_shapefile}{logical, whether to add total population to the shapefile}
 }
 \value{
 long age population data by admin level 2
