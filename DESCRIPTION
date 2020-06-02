@@ -25,7 +25,9 @@ Imports:
     readr,
     tidyselect,
     stringr
-Suggests: knitr, 
+Suggests: 
+    globaltoolboxlite,
+    knitr, 
     rmarkdown, 
     googlesheets4,
     exactextractr,
