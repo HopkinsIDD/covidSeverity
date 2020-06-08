@@ -150,7 +150,7 @@ p_symp_inf <- est_age_param(age_cat_data=raw_params,
                         n_preds=n_preds,
                         study_wt="none")
 
-## make proportion death given symptomatic
+## make proportion death giv0000en symptomatic
 set.seed(death_sim_med)
 p_death_symp <- est_age_param(age_cat_data=raw_params,
                         param_to_est="p_death_symp",
@@ -243,6 +243,28 @@ US_geoid_params %>%
 
 ## save as a data file that can be called from package
 usethis::use_data(US_geoid_params, overwrite=T)
+
+## rename some variables for use with outputs.py
+US_output_geoid_params <- US_geoid_params %>% 
+  left_join(est_geoid_rrs(pred_mtx=p_vent_icu$pred_mtx,
+                          param_to_est="vent_icu",
+                          geoid_age_mtx=US_age_geoid_pct,
+                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
+  left_join(est_geoid_rrs(pred_mtx=p_icu_hosp$pred_mtx,
+                          param_to_est="icu_hosp",
+                          geoid_age_mtx=US_age_geoid_pct,
+                          geoid_pops=US_age_geoid_pop), by="geoid") %>%
+                          dplyr::rename(`RincidH|incidence` = rr_hosp_inf,
+                                        `RincidICU|incidH` = rr_icu_hosp,
+                                        `RincidVent|incidICU` = rr_vent_icu,
+                                        `RincidD|incidence` = rr_death_inf) %>%
+                          dplyr::select(geoid, starts_with("R", ignore.case = F))
+## save a csv file
+US_output_geoid_params %>%
+  write_csv("generated_data/geoid-params-output.csv")
+
+## save as a data file that can be called from package
+usethis::use_data(US_output_geoid_params, overwrite=T)
 
 ## Symptomatic plot
 ggplot(data=p_symp_inf$pred_sum, aes(x=age_grp)) +
