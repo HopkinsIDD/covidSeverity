@@ -1,0 +1,81 @@
+---
+title: "Age adjustment vignette"
+authors: "Stephen Lauer and Shaun Truelove"
+date: "5/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root = here::here())
+library(tidyverse)
+library(covidSeverity)
+devtools::install_github("HopkinsIDD/globaltoolboxlite")
+library(globaltoolboxlite)
+
+```
+
+## Load data
+
+```{r}
+data("US_age_geoid_pct")
+data("US_age_geoid_pop")
+
+age_matrix <- US_age_geoid_pop
+```
+
+
+## Format age data
+
+### For data in a wide or matrix format, with a row of populations by age for each geoid, these can be converted using **convert_age_matrix_long()**:
+```{r, eval=TRUE}
+age_data_long <- convert_age_matrix_long(age_matrix)
+```
+
+### Once age is in long format, we need to convert it to 10-year age groups:
+ -- These data are already set up correctly in 10-year age groups, so no need to evaluate this step
+```{r, eval=FALSE}
+#age_data10yr <- make_10yr_age_data(age_data_long)
+```
+Instead here we just need to rename a column and make proportion
+```{r}
+age_data10yr <- age_data_long %>% 
+  dplyr::rename(age = age_range) %>%
+  dplyr::group_by(geoid) %>%
+  dplyr::mutate(prop = round(pop / sum(pop),3)) %>%
+  dplyr::ungroup()
+```
+
+
+
+## Run age-adjustment
+Using the correctly setup data, we can run the age adjustment parameters estimation:
+```{r}
+geo_age_params <- get_ageadjustments(age_data10yr,
+                                     cores=4,
+                                     n_sims=100,
+                                     n_preds=1000,
+                                     age_grps=c(seq(0,80,by=10),100),
+                                     googlesheet_access=TRUE,
+                                     output_dir="output")
+```
+
+
+
+## USA OVERALL
+
+```{r, eval=FALSE}
+
+# Get age - already in 10yr age groups
+age_data_usa <- get_country_age_pop(ISO3="USA") %>% mutate(geoid="USA")
+
+geo_age_params <- get_ageadjustments( age_data_usa,
+                                      cores=4, 
+                                      n_sims=40,
+                                      n_preds=1000,
+                                      age_grps=c(seq(0,80,by=10),100),
+                                      googlesheet_access=TRUE,
+                                      output_dir="output",
+                                      pop_name = "USA_overall")
+```
+

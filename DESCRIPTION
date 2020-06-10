@@ -33,7 +33,8 @@ Suggests:
     exactextractr,
     RCurl,
     raster,
-    sf
+    sf,
+    viridis
 VignetteBuilder: knitr
 License: What license it uses
 Encoding: UTF-8
