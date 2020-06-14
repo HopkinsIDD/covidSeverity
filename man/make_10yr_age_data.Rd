@@ -4,12 +4,14 @@
 \alias{make_10yr_age_data}
 \title{Take age data for non-uniform age groups and make it into 10-year age groups}
 \usage{
-make_10yr_age_data(age_data, age_range_pred = 0:89)
+make_10yr_age_data(age_data, age_range_pred = 0:89, pop_zeros = 1e-04)
 }
 \arguments{
 \item{age_data}{long format age data with columns: [geoid, age_l, age_r, pop]}
 
 \item{age_range_pred}{ages to predict (default: 0:89)}
+
+\item{pop_zeros}{population to give age groups with 0 individuals. breaks because of log if left at 0.}
 }
 \value{
 10-year age data

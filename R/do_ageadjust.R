@@ -47,6 +47,7 @@ convert_age_matrix_long <- function(age_matrix){
 #'
 #' @param age_data long format age data with columns: [geoid, age_l, age_r, pop]
 #' @param age_range_pred ages to predict (default: 0:89)
+#' @param pop_zeros population to give age groups with 0 individuals. breaks because of log if left at 0.
 #' 
 #' @return 10-year age data
 #' 
@@ -55,7 +56,7 @@ convert_age_matrix_long <- function(age_matrix){
 #' 
 #' @export
 #'
-make_10yr_age_data <- function(age_data, age_range_pred=0:89){    
+make_10yr_age_data <- function(age_data, age_range_pred=0:89, pop_zeros=0.0001){    
     
     # population per year and mid age of group
     age_data <- age_data %>% 
@@ -63,7 +64,7 @@ make_10yr_age_data <- function(age_data, age_range_pred=0:89){
                       age_mid = round((age_r + age_l) / 2, 1))
     
     # Smooth to 1-year age groups, by geoid then predict to 10-yr age groups
-    fit_1yr_ages <- function(age_mid, pop_per_year, age_range_pred=0:89){
+    fit_1yr_ages <- function(age_mid, pop_per_year, age_range_pred=age_range_pred){
         age_smth <- smooth.spline(age_mid, log(pop_per_year), df=length(age_mid)-1)
         tibble::as_tibble(predict(age_smth, age_range_pred)) %>%
             `colnames<-`(c("age","pop")) %>% 
