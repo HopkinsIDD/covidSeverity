@@ -1,0 +1,149 @@
+---
+title: "Age adjustment vignette"
+author: "Shaun Truelove"
+date: "5/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(root = here::here())
+library(tidyverse)
+library(covidSeverity)
+devtools::install_github("HopkinsIDD/globaltoolboxlite")
+library(globaltoolboxlite)
+
+```
+
+
+# Bangladesh using WorldPop
+
+--DOWNLOAD SHAPEFILES
+Users need to download their own shapefiles for this.
+
+
+### First get the age distributions by Admin level 2
+
+```{r}
+
+filenames <- globaltoolboxlite::download_worldpop_agetifs(country="BGD", year="2020", save_dir="../raw_data", cores=4)
+
+
+age_pop_data <- globaltoolboxlite::load_worldpop_age(shp="../raw_data/BGD/bgd_admbnda_adm2_bbs_20180410/bgd_admbnda_adm2_bbs_20180410.shp", 
+                                  country="BGD", year="2020", save_dir="../raw_data", cores=4)
+
+age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
+readr::write_csv(age_pop_10yr, "../raw_data/BGD/BGD_age_pop_10yr.csv")
+readr::write_csv(age_pop_data, "../raw_data/BGD/BGD_age_pop_data.csv")
+
+```
+
+### Now estimate the severity parameters for all Admin 2 locations in the country
+```{r}
+
+# Get proportions
+age_pop_10yr <- age_pop_10yr %>% 
+    dplyr::group_by(adm2) %>%
+    dplyr::mutate(prop = pop / sum(pop)) %>%
+    dplyr::ungroup() 
+
+# make a geoid
+age_pop_10yr <- age_pop_10yr %>% 
+    dplyr::mutate(geoid = as.character(stringr::str_pad(as.integer(as.factor(adm2)), 5, "left", 0)))
+readr::write_csv(age_pop_10yr, "../raw_data/BGD/BGD_age_pop_10yr.csv")
+
+
+# Estimate parameters
+geo_age_params <- get_ageadjustments(age_pop_10yr,
+                                     cores=4,
+                                     n_sims=40,
+                                     n_preds=1000,
+                                     age_grps=c(seq(0,80,by=10),100),
+                                     googlesheet_access=TRUE,
+                                     output_dir="../raw_data/BGD",
+                                     pop_name=NULL)
+
+
+```
+
+
+
+
+### Plot a map of the country, colored by severity metrics
+
+```{r}
+
+library(sf)
+library(tidyverse)
+library(viridis)
+
+# First generate a geodata.csv like used in the CSP
+geodata <- readr::read_csv("../raw_data/BGD/BGD_age_pop_10yr.csv")
+geodata <- geodata %>% 
+  dplyr::group_by(geoid, adm2) %>%
+  dplyr::summarize(pop = round(sum(pop)),
+                admin0 = "BGD") %>%
+  dplyr::select(geoid, admin2=adm2, admin0, pop)
+readr::write_csv(geodata, "../raw_data/BGD/geodata.csv")
+
+
+
+
+map_severity <- function(severity_var = "p_death_inf", 
+                         severity_var_label = "IFR",
+                         geoid_params = "../raw_data/BGD/geoid-params.csv",
+                         geodata = "../raw_data/BGD/geodata.csv",
+                         shp = "../raw_data/BGD/bgd_admbnda_adm2_bbs_20180410/bgd_admbnda_adm2_bbs_20180410.shp",
+                         shp_name_var = "ADM2_EN",
+                         label_locs = NA   ){
+  suppressMessages({
+    geoid_params_ <- readr::read_csv(geoid_params)
+    mapdat <- read_sf(shp) %>%
+      dplyr::mutate(NAME = get(shp_name_var))
+    geodat <- readr::read_csv(geodata)
+  })
+
+  if ("pop" %in% colnames(mapdat)){
+    mapdat <- mapdat %>% dplyr::select(-pop)
+  }
+  if ("geoid" %in% colnames(mapdat)){
+    mapdat <- mapdat %>% dplyr::rename(geoid_v0 = geoid)
+  }
+  
+  # Combine data into shapefile
+  mapdat <- mapdat %>% 
+    dplyr::left_join(geodat, by=c("NAME"="admin2")) %>%
+    dplyr::left_join(geoid_params_, by=c("geoid"))
+  
+
+  # Plot it
+  plt <- ggplot(mapdat) +
+            geom_sf(aes(fill = get(severity_var))) +
+            theme_void() +
+            viridis::scale_fill_viridis() +
+            labs(fill=severity_var_label)
+  if (!is.na(label_locs)){
+    if (tolower(label_locs)=="all"){
+      plt <- plt +
+        geom_text(mapdat, aes(X,Y, label=NAME), size=5)
+     } else if (!is.na(label_locs)){
+        label_dat <-  mapdat %>% filter(NAME %in% label_locs)
+        plt <- plt + geom_sf_text(data=label_dat, aes(label=NAME), size=3, hjust=0.5)
+     }
+  }
+  
+  return(plt)
+}
+
+
+
+map_severity(severity_var = "p_death_inf", 
+             severity_var_label = "IFR",
+             geoid_params = "../raw_data/BGD/geoid-params.csv",
+             geodata = "../raw_data/BGD/geodata.csv",
+             shp = "../raw_data/BGD/bgd_admbnda_adm2_bbs_20180410/bgd_admbnda_adm2_bbs_20180410.shp",
+             shp_name_var = "ADM2_EN",
+             label_locs = NA)
+
+```
+

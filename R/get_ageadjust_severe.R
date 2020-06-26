@@ -135,11 +135,12 @@ est_age_param <- function(age_cat_data,
                  names_to="pred",
                  values_to="est") %>%
     group_by(age_grp) %>%
-    summarize(est_med=median(est),
+    summarize(est_mean=mean(est),
+              est_med=median(est),
               est_lb=quantile(est, probs=.025),
               est_ub=quantile(est, probs=.975))
-  colnames(pred_summary) <- gsub("est", param_to_est, colnames(pred_summary))
-  return(list(pred_mtx=preds, pred_sum=pred_summary, param_to_est=param_to_est))
+  #colnames(pred_summary) <- gsub("est", param_to_est, colnames(pred_summary))
+  return(list(param_to_est=param_to_est, pred_mtx=preds, pred_sum=pred_summary, param_to_est=param_to_est))
 }
 
 #' Find parameter values for GEOIDs

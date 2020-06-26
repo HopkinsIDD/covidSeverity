@@ -27,6 +27,9 @@ convert_age_matrix_long <- function(age_matrix){
         tidyr::pivot_longer(cols=c(-geoid), names_to = "age_range", values_to = "pop")
     age_data_long <- age_data_long %>% 
         tidyr::separate(age_range, c("age_l", "age_r"), sep=age_separator, remove=FALSE) %>%
+        dplyr::group_by(geoid) %>%
+        dplyr::mutate(prop = round(pop / sum(pop),4)) %>%
+        dplyr::ungroup() %>%
         dplyr::mutate(age_cat = paste0("age_", 
                                        stringr::str_pad(age_l, width = 2, pad = "0"), 
                                        stringr::str_pad(age_r, width = 2, pad = "0")),
@@ -403,38 +406,50 @@ get_ageadjustments <- function( age_data,
     
     
     ## hospitalization rate amongst infections
-    p_hosp_inf <- list(pred_mtx=p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx, param_to_est="p_hosp_inf")
+    p_hosp_inf <- list(param_to_est="p_hosp_inf", pred_mtx = p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx)
     p_hosp_inf$pred_sum <- p_hosp_inf$pred_mtx %>% pred_sum_fn(age_grps = age_grps)
     
     ## IFR
-    p_death_inf <- list(pred_mtx=p_death_symp$pred_mtx * p_symp_inf$pred_mtx, param_to_est="p_death_inf")
+    p_death_inf <- list(param_to_est="p_death_inf", pred_mtx = p_death_symp$pred_mtx * p_symp_inf$pred_mtx)
     p_death_inf$pred_sum <- p_death_inf$pred_mtx %>% pred_sum_fn(age_grps = age_grps)
     
-    ## hospitalization rate amongst symptomatic
-    p_mild_symp <- list(pred_mtx=1-p_hosp_symp$pred_mtx, param_to_est="p_mild_symp")
+    ## mild rate amongst symptomatic
+    p_mild_symp <- list(param_to_est="p_mild_symp", pred_mtx = 1-p_hosp_symp$pred_mtx)
     p_mild_symp$pred_sum <- p_mild_symp$pred_mtx %>% pred_sum_fn(age_grps = age_grps)
     
+    ## mild illneess rate amongst infected
+    p_mild_inf <- list(param_to_est="p_mild_inf", pred_mtx = p_mild_symp$pred_mtx * p_symp_inf$pred_mtx)
+    p_mild_inf$pred_sum <- p_mild_inf$pred_mtx %>% pred_sum_fn(age_grps = age_grps)
     
+    ## ventilation rate amongst infected
+    p_vent_inf <- list(param_to_est="p_vent_inf", 
+                       pred_mtx = p_vent_icu$pred_mtx * p_icu_hosp$pred_mtx * p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx)
+    p_vent_inf$pred_sum <- p_vent_inf$pred_mtx %>% pred_sum_fn(age_grps = age_grps)
     
+    ## icu rate amongst infected
+    p_icu_inf <- list(param_to_est="p_icu_inf", 
+                       pred_mtx = p_icu_hosp$pred_mtx * p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx)
+    p_icu_inf$pred_sum <- p_icu_inf$pred_mtx %>% pred_sum_fn(age_grps = age_grps)
+
+
+
     ## get all output parameters
     geoid_params <- est_geoid_params(p_symp_inf$pred_mtx,
                                      param_to_est=p_symp_inf$param_to_est,
                                      age_data_clean$age_matrix_pct) %>%
-        dplyr::left_join(est_geoid_params(p_death_symp$pred_mtx * p_symp_inf$pred_mtx,
+        dplyr::left_join(est_geoid_params(p_death_inf$pred_mtx,
                                    param_to_est="p_death_inf",
                                    age_data_clean$age_matrix_pct), by="geoid") %>%
-        dplyr::left_join(est_geoid_params(p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx,
+        dplyr::left_join(est_geoid_params(p_hosp_inf$pred_mtx,
                                    param_to_est="p_hosp_inf",
                                    age_data_clean$age_matrix_pct), by="geoid") %>%
-        dplyr::left_join(est_geoid_params(1 - (p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx + (1 - p_symp_inf$pred_mtx)),
+        dplyr::left_join(est_geoid_params(p_mild_inf$pred_mtx,
                                    param_to_est="p_mild_inf",
                                    age_data_clean$age_matrix_pct), by="geoid") %>%
-        dplyr::left_join(est_geoid_params(p_icu_hosp$pred_mtx * p_hosp_symp$pred_mtx *
-                                       p_symp_inf$pred_mtx,
+        dplyr::left_join(est_geoid_params(p_icu_inf$pred_mtx,
                                    param_to_est="p_icu_inf",
                                    age_data_clean$age_matrix_pct), by="geoid") %>%
-        dplyr::left_join(est_geoid_params(p_vent_icu$pred_mtx * p_icu_hosp$pred_mtx *
-                                       p_hosp_symp$pred_mtx * p_symp_inf$pred_mtx,
+        dplyr::left_join(est_geoid_params(p_vent_inf$pred_mtx,
                                    param_to_est="p_vent_inf",
                                    age_data_clean$age_matrix_pct), by="geoid") %>%
         dplyr::mutate(p_death_symp=p_death_inf/p_symp_inf,
@@ -464,7 +479,6 @@ get_ageadjustments <- function( age_data,
                                 param_to_est="vent_inf",
                                 geoid_age_mtx=age_data_clean$age_matrix_pct,
                                 geoid_pops=age_data_clean$age_matrix), by="geoid")
-    
 
     ## Summarize and Save...........................................................   
     
@@ -474,14 +488,17 @@ get_ageadjustments <- function( age_data,
                                    ifelse(!is.null(pop_name), paste0(pop_name, "_geoid-params.csv"),
                                           "geoid-params.csv")))
     ## save as list
-    saveRDS(list(p_symp_inf,
-                 p_mild_symp,
-                 p_death_symp,
-                 p_death_inf,
-                 p_hosp_symp,
-                 p_hosp_inf,
-                 p_icu_hosp,
-                 p_vent_icu),
+    saveRDS(list(p_symp_inf = p_symp_inf,
+                 p_mild_inf = p_mild_inf,
+                 p_hosp_inf = p_hosp_inf,
+                 p_icu_inf = p_icu_inf,
+                 p_vent_inf = p_vent_inf,
+                 p_death_inf = p_death_inf,
+                 p_mild_symp = p_mild_symp,
+                 p_hosp_symp = p_hosp_symp,
+                 p_death_symp = p_death_symp,
+                 p_icu_hosp = p_icu_hosp,
+                 p_vent_icu = p_vent_icu),
             file=file.path(output_dir, 
                            ifelse(!is.null(pop_name), paste0(pop_name, "_param-age-dist.rds"),
                                   "param-age-dist.rds")))
