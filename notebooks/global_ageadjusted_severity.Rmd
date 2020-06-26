@@ -15,8 +15,10 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(root = here::here())
 library(tidyverse)
 library(covidSeverity)
-devtools::install_github("HopkinsIDD/globaltoolboxlite")
+#devtools::install_github("HopkinsIDD/globaltoolboxlite", force=TRUE)
 library(globaltoolboxlite)
+library(foreach)
+library(doParallel)
 
 ```
 
@@ -31,12 +33,13 @@ Users need to download their own shapefiles for this.
 ### First get the list of countries included in the GADM shapefiles
 
 ```{r}
+shp <- "../raw_data/gadm36_levels_shp/gadm36_2.shp"
+shp_global_adm2 <- sf::read_sf(shp)
+#shp_global_adm2_afg <- sf::read_sf(shp) %>% filter(!!as.name(shp_country_var)=="AFG")
+shp_data <- sf::st_set_geometry(shp_global_adm2, NULL)
 
-shp_global <- sf::read_sf(shp)
-
-country_codes <- 
-country_names <- 
-
+country_codes <- unique(shp_global_adm2$GID_0)
+country_names <- unique(shp_global_adm2$NAME_0)
 
 ```
 
@@ -45,50 +48,83 @@ country_names <-
 
 ```{r}
 
-filenames <- globaltoolboxlite::download_worldpop_agetifs(country="BGD", year="2020", save_dir="../raw_data", cores=4)
+dir.create(file.path("../raw_data", "global_severity"), recursive = TRUE, showWarnings = FALSE)
 
+#for (c in seq_along(country_codes)){ 
+for (c in 7:length(country_codes)){ 
 
-age_pop_data <- globaltoolboxlite::load_worldpop_age(shp="../raw_data/BGD/bgd_admbnda_adm2_bbs_20180410/bgd_admbnda_adm2_bbs_20180410.shp", 
-                                  country="BGD", year="2020", save_dir="../raw_data", cores=4)
-
-age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
-readr::write_csv(age_pop_10yr, "../raw_data/BGD/BGD_age_pop_10yr.csv")
-readr::write_csv(age_pop_data, "../raw_data/BGD/BGD_age_pop_data.csv")
+  # Download and save all the geotifs from worldpop
+  filenames <- globaltoolboxlite::download_worldpop_agetifs(country=country_codes[c], year="2020", save_dir="../raw_data/geotifs", cores=25)
+  
+  age_pop_data <- globaltoolboxlite::load_worldpop_age(shp=shp, 
+                                    country=country_codes[c], year="2020", 
+                                    save_dir="../raw_data/geotifs", 
+                                    cores=25,
+                                    loc_var = "NAME_2",
+                                    add_pop_to_shapefile = FALSE,
+                                    shp_country_var="GID_0")
+  
+  age_pop_data <- age_pop_data %>% dplyr::rename(adm2=NAME_2)
+  age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
+  readr::write_csv(age_pop_10yr, file.path("../raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
+  readr::write_csv(age_pop_data, file.path("../raw_data", "global_severity", paste0(country_codes[c],"_age_pop_data.csv")))
+  
+  # delete the geotifs to save space (they are >10G per country)
+  unlink(file.path("../raw_data/geotifs", country_codes[c]), recursive = TRUE)
+}
 
 ```
 
-### Now estimate the severity parameters for all Admin 2 locations in the country
+### Now estimate the severity parameters for all Admin 2 locations in each country
+
 ```{r}
 
-# Get proportions
-age_pop_10yr <- age_pop_10yr %>% 
-    dplyr::group_by(adm2) %>%
-    dplyr::mutate(prop = pop / sum(pop)) %>%
-    dplyr::ungroup() 
-
-# make a geoid
-age_pop_10yr <- age_pop_10yr %>% 
-    dplyr::mutate(geoid = as.character(stringr::str_pad(as.integer(as.factor(adm2)), 5, "left", 0)))
-readr::write_csv(age_pop_10yr, "../raw_data/BGD/BGD_age_pop_10yr.csv")
 
 
-# Estimate parameters
-geo_age_params <- get_ageadjustments(age_pop_10yr,
-                                     cores=4,
-                                     n_sims=40,
-                                     n_preds=1000,
-                                     age_grps=c(seq(0,80,by=10),100),
-                                     googlesheet_access=TRUE,
-                                     output_dir="../raw_data/BGD",
-                                     pop_name=NULL)
-
+for (c in seq_along(country_codes)){ 
+  
+  age_pop_10yr <- readr::read_csv(file.path("../raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
+  
+  # Get proportions
+  age_pop_10yr <- age_pop_10yr %>% 
+      dplyr::group_by(adm2) %>%
+      dplyr::mutate(prop = round(pop / sum(pop),4)) %>%
+      dplyr::ungroup() 
+  
+  # make a geoid and province info
+  age_pop_10yr <- age_pop_10yr %>% 
+      #dplyr::mutate(geoid = as.character(iconvadm2)), 5, "left", 0)))
+      left_join(shp_data %>% 
+                  dplyr::filter(GID_0==country_codes[c]) %>%
+                  dplyr::select(adm0=GID_0, country=NAME_0, 
+                                adm1=GID_1, adm1_name=NAME_1, 
+                                geoid=GID_2, adm2=NAME_2), 
+                by="adm2")
+  
+  # Fix 0s in proportion when 0 population in a district
+  age_pop_10yr <- age_pop_10yr %>% 
+    dplyr::mutate(prop = ifelse(is.nan(prop), 0, prop))
+  
+  # Save the updated version
+  readr::write_csv(age_pop_10yr, file.path("../raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
+  
+  # Estimate parameters
+  geo_age_params <- get_ageadjustments(age_pop_10yr,
+                                       cores=25,
+                                       n_sims=40,
+                                       n_preds=1000,
+                                       age_grps=c(seq(0,80,by=10),100),
+                                       googlesheet_access=FALSE,
+                                       output_dir="../raw_data/global_severity",
+                                       pop_name=country_codes[c])
+}
 
 ```
 
 
 
 
-### Plot a map of the country, colored by severity metrics
+### Plot a map of the countries, colored by severity metrics
 
 ```{r}
 

@@ -480,6 +480,9 @@ get_ageadjustments <- function( age_data,
                                 geoid_age_mtx=age_data_clean$age_matrix_pct,
                                 geoid_pops=age_data_clean$age_matrix), by="geoid")
 
+    # fix NaNs in locations where there is no population
+    geoid_params[is.na(geoid_params)] <- 0
+
     ## Summarize and Save...........................................................   
     
     ## save a csv file
