@@ -38,8 +38,10 @@ shp_global_adm2 <- sf::read_sf(shp)
 #shp_global_adm2_afg <- sf::read_sf(shp) %>% filter(!!as.name(shp_country_var)=="AFG")
 shp_data <- sf::st_set_geometry(shp_global_adm2, NULL)
 
-country_codes <- unique(shp_global_adm2$GID_0)
+country_codes_gadm <- unique(shp_global_adm2$GID_0)
 country_names <- unique(shp_global_adm2$NAME_0)
+country_codes <- country_codes_gadm
+country_codes[country_codes=="XKO"] <- "KOS"
 
 ```
 
@@ -51,7 +53,7 @@ country_names <- unique(shp_global_adm2$NAME_0)
 dir.create(file.path("../raw_data", "global_severity"), recursive = TRUE, showWarnings = FALSE)
 
 #for (c in seq_along(country_codes)){ 
-for (c in 7:length(country_codes)){ 
+for (c in 163:length(country_codes)){ 
 
   # Download and save all the geotifs from worldpop
   filenames <- globaltoolboxlite::download_worldpop_agetifs(country=country_codes[c], year="2020", save_dir="../raw_data/geotifs", cores=25)
@@ -75,13 +77,22 @@ for (c in 7:length(country_codes)){
 
 ```
 
+
+# ---> NEED TO COME BACK TO KOSOVO (XKO vs KOS)
+
+
+
+
+
 ### Now estimate the severity parameters for all Admin 2 locations in each country
 
 ```{r}
 
+#for (c in seq_along(country_codes)){ 
+for (c in 7:length(country_codes)){ 
 
-
-for (c in seq_along(country_codes)){ 
+  
+  if (country_codes[c]=="KOS" | country_codes[c]=="XKO") next
   
   age_pop_10yr <- readr::read_csv(file.path("../raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
   
