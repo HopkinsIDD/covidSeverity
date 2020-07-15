@@ -254,17 +254,34 @@ US_output_geoid_params <- US_geoid_params %>%
                           param_to_est="icu_hosp",
                           geoid_age_mtx=US_age_geoid_pct,
                           geoid_pops=US_age_geoid_pop), by="geoid") %>%
-                          dplyr::rename(`RincidH|incidence` = rr_hosp_inf,
+                          dplyr::rename(`PincidH|incidence` = p_hosp_inf,
+                                        `PincidICU|incidH` = p_icu_hosp,
+                                        `PincidVent|incidICU` = p_vent_icu,
+                                        `PincidD|incidence` = p_death_inf,
+                                        `RincidH|incidence` = rr_hosp_inf,
                                         `RincidICU|incidH` = rr_icu_hosp,
                                         `RincidVent|incidICU` = rr_vent_icu,
                                         `RincidD|incidence` = rr_death_inf) %>%
-                          dplyr::select(geoid, starts_with("R", ignore.case = F))
+                          dplyr::select(geoid, starts_with("P", ignore.case = F), starts_with("R", ignore.case = F))
 ## save a csv file
 US_output_geoid_params %>%
   write_csv("generated_data/geoid-params-output.csv")
 
 ## save as a data file that can be called from package
 usethis::use_data(US_output_geoid_params, overwrite=T)
+
+## Make a long version of the output params
+US_output_geoid_params_long <- US_output_geoid_params %>%
+                               pivot_longer(-geoid, names_to = "varname", values_to = "value") %>%
+                               mutate(quantity=substr(varname, 1, 1),
+                                      varname=substr(varname, 2, 20)) %>%
+                               separate(varname, into = c("outcome", "source"))
+## save a csv file
+US_output_geoid_params_long %>%
+  write_csv("generated_data/geoid-params-output-long.csv")
+
+## save as a data file that can be called from package
+usethis::use_data(US_output_geoid_params_long, overwrite=T)
 
 ## Symptomatic plot
 ggplot(data=p_symp_inf$pred_sum, aes(x=age_grp)) +
