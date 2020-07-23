@@ -1,24 +1,47 @@
 ---
-title: "R Notebook"
-output: html_notebook
----
-
----
 title: "Age adjustment vignette"
 author: "Shaun Truelove"
 date: "5/1/2020"
-output: html_document
+output:
+  html_document:
+    df_print: paged
+    fig_caption: true
+    theme: lumen
+    toc: true
+    toc_float:
+      toc_collapsed: true
+    toc_depth: 3
+    number_sections: false
+    pandoc_args: ["--wrap=none", "--top-level-division=chapter"]
+  editor_options: 
+    chunk_output_type: console
 ---
-
+  
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 knitr::opts_chunk$set(root = here::here())
+#knitr::opts_chunk$set(dev="CairoPNG")
+knitr::opts_chunk$set(dev.args = list(png = list(type = "cairo")))
+
+
 library(tidyverse)
 library(covidSeverity)
 #devtools::install_github("HopkinsIDD/globaltoolboxlite", force=TRUE)
 library(globaltoolboxlite)
 library(foreach)
 library(doParallel)
+library(gridExtra)
+library(sf)
+
+
+# Functions
+
+filter_var <- function(p_var="p_death_inf", countries_=c("ZMB", "COD","KEN"), data = geoid_params){
+  data %>% filter(grepl(paste(countries_, collapse = "|"), geoid)) %>% pull(p_var)
+}
+
+
+
 
 ```
 
@@ -33,43 +56,110 @@ Users need to download their own shapefiles for this.
 ### First get the list of countries included in the GADM shapefiles
 
 ```{r}
-shp <- "../raw_data/gadm36_levels_shp/gadm36_2.shp"
-shp_global_adm2 <- sf::read_sf(shp)
+getwd()
+```
+
+Shapefiles
+
+```{r}
+
+shp <- "raw_data/gadm36_levels_shp/gadm36_2.shp"
+shp_adm2 <- sf::read_sf(shp)
+"KOS" %in% shp_adm2$GID_0
+
+shp1 <- "raw_data/gadm36_levels_shp/gadm36_1.shp"
+shp_adm1 <- sf::read_sf(shp1)
+"KOS" %in% shp_adm1$GID_0
+"XKO" %in% shp_adm1$GID_0
+
+shp0 <- "raw_data/gadm36_levels_shp/gadm36_0.shp"
+shp_adm0 <- sf::read_sf(shp0)
+"KOS" %in% shp_adm0$GID_0
+
+
+```
+
+
+
+```{r}
+
+shp_adm2 <- shp_adm2 %>% mutate(GID_0 = ifelse(GID_0=="XKO", "KOS", GID_0)) # Fix Kosovo
+st_write(shp_adm2, shp, delete_layer=TRUE, append = FALSE) # Re-save it
+
+shp_adm0 <- shp_adm0 %>% mutate(GID_0 = ifelse(GID_0=="XKO", "KOS", GID_0)) # Fix Kosovo
+st_write(shp_adm0, shp0, delete_layer=TRUE, append = FALSE) # Re-save it
+
+# For countries with no Level 2 shapefiles, grab the level 1 or 0
+shp_adm1 <- shp_adm1 %>% mutate(GID_0 = ifelse(GID_0=="XKO", "KOS", GID_0)) # Fix Kosovo
+st_write(shp_adm1, shp1, delete_layer=TRUE, append = FALSE) # Re-save it
+
+
+shp_adm2_countries <- unique(shp_adm2$GID_0)
+shp_adm0_countries <- unique(shp_adm0$GID_0)
+shp_adm1_countries <- unique(shp_adm1$GID_0)
+
+
+adm1only_countries <- shp_adm1_countries[!(shp_adm1_countries %in% shp_adm2_countries)]
+adm0only_countries <- shp_adm0_countries[!(shp_adm0_countries %in% c(adm1only_countries, shp_adm2_countries))]
+
+
+shp_global_adm2 <- shp_adm2  %>% mutate(source = "gadm36_2") %>%
+  bind_rows(shp_adm1 %>% filter(GID_0 %in% adm1only_countries) %>% mutate(source = "gadm36_1")) %>%
+                                  bind_rows(shp_adm0 %>% filter(GID_0 %in% adm0only_countries) %>% mutate(source = "gadm36_0"))            
+
+# for simplicity, i will rename the 
+shp_global_adm2 <- shp_global_adm2 %>% 
+  mutate(NAME_2 = ifelse(is.na(GID_2) & !is.na(GID_1), NAME_1, NAME_2),
+         GID_2 = ifelse(is.na(GID_2) & !is.na(GID_1), GID_1, GID_2)) %>%
+  mutate(NAME_2 = ifelse(is.na(GID_2) & !is.na(GID_0), NAME_0, NAME_2),
+         GID_2 = ifelse(is.na(GID_2) & !is.na(GID_0), GID_0, GID_2))
+
+# standardize the names of adm2
+shp_global_adm2 <- shp_global_adm2 %>%
+  mutate(NAME_2_orig = NAME_2,
+         NAME_1_orig = NAME_1,
+         NAME_2 = globaltoolboxlite::standardize_location_strings(NAME_2),
+         NAME_1 = globaltoolboxlite::standardize_location_strings(NAME_1))
+
 #shp_global_adm2_afg <- sf::read_sf(shp) %>% filter(!!as.name(shp_country_var)=="AFG")
 shp_data <- sf::st_set_geometry(shp_global_adm2, NULL)
 
 country_codes_gadm <- unique(shp_global_adm2$GID_0)
 country_names <- unique(shp_global_adm2$NAME_0)
 country_codes <- country_codes_gadm
-country_codes[country_codes=="XKO"] <- "KOS"
+#country_codes[country_codes=="XKO"] <- "KOS"
+
+# Save the combined shapefiles
+st_write(shp_global_adm2, "raw_data/gadm36_levels_shp/gadm36_combo.shp", delete_layer=TRUE, append = FALSE) # Re-save it
+
 
 ```
 
 
 ### Then get the age distributions by Admin level 2
 
-```{r}
+```{r, eval=FALSE}
 
-dir.create(file.path("../raw_data", "global_severity"), recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path("raw_data", "global_severity"), recursive = TRUE, showWarnings = FALSE)
 
-#for (c in seq_along(country_codes)){ 
-for (c in 163:length(country_codes)){ 
-
-  # Download and save all the geotifs from worldpop
-  filenames <- globaltoolboxlite::download_worldpop_agetifs(country=country_codes[c], year="2020", save_dir="../raw_data/geotifs", cores=25)
+for (c in seq_along(country_codes)){ 
+#for (c in 163:length(country_codes)){ 
   
-  age_pop_data <- globaltoolboxlite::load_worldpop_age(shp=shp, 
-                                    country=country_codes[c], year="2020", 
-                                    save_dir="../raw_data/geotifs", 
-                                    cores=25,
-                                    loc_var = "NAME_2",
-                                    add_pop_to_shapefile = FALSE,
-                                    shp_country_var="GID_0")
+  # Download and save all the geotifs from worldpop
+  filenames <- globaltoolboxlite::download_worldpop_agetifs(country=country_codes[c], year="2020", save_dir="raw_data/geotifs", cores=25)
+  
+  age_pop_data <- globaltoolboxlite::load_worldpop_age(shp=shp_global_adm2, 
+                                                       country=country_codes[c], year="2020", 
+                                                       save_dir="raw_data/geotifs", 
+                                                       cores=25,
+                                                       loc_var = "NAME_2",
+                                                       add_pop_to_shapefile = FALSE,
+                                                       shp_country_var="GID_0")
   
   age_pop_data <- age_pop_data %>% dplyr::rename(adm2=NAME_2)
   age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
-  readr::write_csv(age_pop_10yr, file.path("../raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
-  readr::write_csv(age_pop_data, file.path("../raw_data", "global_severity", paste0(country_codes[c],"_age_pop_data.csv")))
+  readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
+  readr::write_csv(age_pop_data, file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_data.csv")))
   
   # delete the geotifs to save space (they are >10G per country)
   unlink(file.path("../raw_data/geotifs", country_codes[c]), recursive = TRUE)
@@ -78,7 +168,117 @@ for (c in 163:length(country_codes)){
 ```
 
 
-# ---> NEED TO COME BACK TO KOSOVO (XKO vs KOS)
+
+### Get distributions for KOS and countries without ADm2 shapefiles
+
+```{r, eval=FALSE}
+
+
+# Kosovo
+# - renamed shapefile GID_0 above
+
+country_codes_tmp <- "KOS"
+{
+ # Download and save all the geotifs from worldpop
+  filenames <- globaltoolboxlite::download_worldpop_agetifs(country=country_codes_tmp, year="2020", save_dir="raw_data/geotifs", cores=25)
+
+  age_pop_data <- globaltoolboxlite::load_worldpop_age(shp=shp_global_adm2, 
+                                                       country=country_codes_tmp, year="2020", 
+                                                       save_dir="raw_data/geotifs", 
+                                                       cores=25,
+                                                       loc_var = "NAME_2",
+                                                       add_pop_to_shapefile = FALSE,
+                                                       shp_country_var="GID_0")
+  
+  age_pop_data <- age_pop_data %>% dplyr::rename(adm2=NAME_2)
+  age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
+  readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", paste0(country_codes_tmp,"_age_pop_10yr.csv")))
+  readr::write_csv(age_pop_data, file.path("raw_data", "global_severity", paste0(country_codes_tmp,"_age_pop_data.csv")))
+  
+  # delete the geotifs to save space (they are >10G per country)
+  unlink(file.path("raw_data/geotifs", country_codes_tmp), recursive = TRUE)
+}
+
+
+
+
+# Get countries without Adm2
+
+# Adm1 only countries
+for (c in 4:length(adm1only_countries)){ 
+  
+  # Download and save all the geotifs from worldpop
+  filenames <- tryCatch({
+    globaltoolboxlite::download_worldpop_agetifs(country=adm1only_countries[c], 
+                                                 year="2020", save_dir="raw_data/geotifs", cores=25)
+  },
+  error=function(e) NA
+  )
+  if (is.na(filenames)) next
+  
+  age_pop_data <- tryCatch({
+    globaltoolboxlite::load_worldpop_age(shp=shp_global_adm2, 
+                                                       country=adm1only_countries[c], 
+                                                       year="2020", 
+                                                       save_dir="raw_data/geotifs", 
+                                                       cores=25,
+                                                       loc_var = "NAME_2",
+                                                       add_pop_to_shapefile = FALSE,
+                                                       shp_country_var="GID_0")
+  },
+  error=function(e) NA
+  )
+  if (is.na(age_pop_data)) next
+  
+  age_pop_data <- age_pop_data %>% dplyr::rename(adm2=NAME_2)
+  age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
+  readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", paste0(adm1only_countries[c],"_age_pop_10yr.csv")))
+  readr::write_csv(age_pop_data, file.path("raw_data", "global_severity", paste0(adm1only_countries[c],"_age_pop_data.csv")))
+  
+  # delete the geotifs to save space (they are >10G per country)
+  unlink(file.path("raw_data/geotifs", adm1only_countries[c]), recursive = TRUE)
+}
+
+
+# Adm0 only countries
+for (c in 1:length(adm0only_countries)){ 
+  
+  # Download and save all the geotifs from worldpop
+  filenames <- tryCatch({
+    globaltoolboxlite::download_worldpop_agetifs(country=adm0only_countries[c], 
+                                                            year="2020", save_dir="raw_data/geotifs", cores=25)
+  },
+    error=function(e) NA
+  )
+  if (is.na(filenames)) next
+  
+  age_pop_data <- tryCatch({
+    globaltoolboxlite::load_worldpop_age(shp=shp_global_adm2, 
+                                                       country=adm0only_countries[c], year="2020", 
+                                                       save_dir="raw_data/geotifs", 
+                                                       cores=25,
+                                                       loc_var = "NAME_2",
+                                                       add_pop_to_shapefile = FALSE,
+                                                       shp_country_var="GID_0")
+  },
+  error=function(e) NA
+  )
+  if (is.na(age_pop_data)) next
+  
+  
+  age_pop_data <- age_pop_data %>% dplyr::rename(adm2=NAME_2)
+  age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
+  readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", paste0(adm0only_countries[c],"_age_pop_10yr.csv")))
+  readr::write_csv(age_pop_data, file.path("raw_data", "global_severity", paste0(adm0only_countries[c],"_age_pop_data.csv")))
+  
+  # delete the geotifs to save space (they are >10G per country)
+  unlink(file.path("raw_data/geotifs", adm0only_countries[c]), recursive = TRUE)
+}
+
+
+
+```
+
 
 
 
@@ -86,38 +286,46 @@ for (c in 163:length(country_codes)){
 
 ### Now estimate the severity parameters for all Admin 2 locations in each country
 
-```{r}
+```{r, eval=FALSE}
 
 #for (c in seq_along(country_codes)){ 
-for (c in 7:length(country_codes)){ 
+for (c in 170:length(country_codes)){ 
 
+  if (!file.exists(file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))) next
+  #if (country_codes[c]=="KOS" | country_codes[c]=="XKO") next
+  age_pop_10yr <- readr::read_csv(file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
   
-  if (country_codes[c]=="KOS" | country_codes[c]=="XKO") next
-  
-  age_pop_10yr <- readr::read_csv(file.path("../raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
-  
+  # Get rid of .y columns and fix .x
+  age_pop_10yr <- age_pop_10yr %>%
+     dplyr::select(-contains(".y"))
+  colnames(age_pop_10yr) <- gsub(".x", "", colnames(age_pop_10yr))
+   
   # Get proportions
   age_pop_10yr <- age_pop_10yr %>% 
-      dplyr::group_by(adm2) %>%
-      dplyr::mutate(prop = round(pop / sum(pop),4)) %>%
-      dplyr::ungroup() 
+    dplyr::select("adm2","pop","pop_m", "pop_f", "age_l","age_r", "age") %>%
+    dplyr::mutate(adm2 = globaltoolboxlite::standardize_location_strings(adm2)) %>%
+    dplyr::group_by(adm2) %>%
+    dplyr::mutate(prop = round(pop / sum(pop),4)) %>%
+    dplyr::ungroup() 
   
   # make a geoid and province info
   age_pop_10yr <- age_pop_10yr %>% 
-      #dplyr::mutate(geoid = as.character(iconvadm2)), 5, "left", 0)))
-      left_join(shp_data %>% 
-                  dplyr::filter(GID_0==country_codes[c]) %>%
-                  dplyr::select(adm0=GID_0, country=NAME_0, 
-                                adm1=GID_1, adm1_name=NAME_1, 
-                                geoid=GID_2, adm2=NAME_2), 
-                by="adm2")
+    #dplyr::mutate(geoid = as.character(iconvadm2)), 5, "left", 0)))
+    left_join(shp_data %>% 
+                dplyr::filter(GID_0==country_codes[c]) %>%
+                dplyr::select(adm0=GID_0, country=NAME_0, 
+                              adm1=GID_1, adm1_name=NAME_1, 
+                              geoid=GID_2, adm2=NAME_2), 
+              by=c("adm2"="adm2"))
   
   # Fix 0s in proportion when 0 population in a district
   age_pop_10yr <- age_pop_10yr %>% 
     dplyr::mutate(prop = ifelse(is.nan(prop), 0, prop))
   
   # Save the updated version
-  readr::write_csv(age_pop_10yr, file.path("../raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
+  readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
+  
+  if (file.exists(file.path("raw_data", "global_severity", paste0(country_codes[c],"_geoid-params.csv")))) next
   
   # Estimate parameters
   geo_age_params <- get_ageadjustments(age_pop_10yr,
@@ -126,7 +334,7 @@ for (c in 7:length(country_codes)){
                                        n_preds=1000,
                                        age_grps=c(seq(0,80,by=10),100),
                                        googlesheet_access=FALSE,
-                                       output_dir="../raw_data/global_severity",
+                                       output_dir="raw_data/global_severity",
                                        pop_name=country_codes[c])
 }
 
@@ -138,78 +346,791 @@ for (c in 7:length(country_codes)){
 ### Plot a map of the countries, colored by severity metrics
 
 ```{r}
+source("R/plotting_functions.R")
 
-library(sf)
-library(tidyverse)
-library(viridis)
-
-# First generate a geodata.csv like used in the CSP
-geodata <- readr::read_csv("../raw_data/BGD/BGD_age_pop_10yr.csv")
-geodata <- geodata %>% 
-  dplyr::group_by(geoid, adm2) %>%
-  dplyr::summarize(pop = round(sum(pop)),
-                admin0 = "BGD") %>%
-  dplyr::select(geoid, admin2=adm2, admin0, pop)
-readr::write_csv(geodata, "../raw_data/BGD/geodata.csv")
+```
 
 
 
+```{r, eval=FALSE}
 
-map_severity <- function(severity_var = "p_death_inf", 
-                         severity_var_label = "IFR",
-                         geoid_params = "../raw_data/BGD/geoid-params.csv",
-                         geodata = "../raw_data/BGD/geodata.csv",
-                         shp = "../raw_data/BGD/bgd_admbnda_adm2_bbs_20180410/bgd_admbnda_adm2_bbs_20180410.shp",
-                         shp_name_var = "ADM2_EN",
-                         label_locs = NA   ){
+# Merge results
+
+geoid_params <- age_pop_10yr <- list()
+
+for (c in seq_along(country_codes)){ 
+  #if (country_codes[c]=="KOS" | country_codes[c]=="XKO") next
   suppressMessages({
-    geoid_params_ <- readr::read_csv(geoid_params)
-    mapdat <- read_sf(shp) %>%
-      dplyr::mutate(NAME = get(shp_name_var))
-    geodat <- readr::read_csv(geodata)
+    geoid_params[[c]] <- tryCatch( readr::read_csv(file.path("raw_data", "global_severity", paste0(country_codes[c],"_geoid-params.csv"))), error=function(e) NULL)
+    age_pop_10yr[[c]] <- tryCatch( readr::read_csv(file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv"))), error=function(e) NULL)
   })
-
-  if ("pop" %in% colnames(mapdat)){
-    mapdat <- mapdat %>% dplyr::select(-pop)
-  }
-  if ("geoid" %in% colnames(mapdat)){
-    mapdat <- mapdat %>% dplyr::rename(geoid_v0 = geoid)
-  }
-  
-  # Combine data into shapefile
-  mapdat <- mapdat %>% 
-    dplyr::left_join(geodat, by=c("NAME"="admin2")) %>%
-    dplyr::left_join(geoid_params_, by=c("geoid"))
-  
-
-  # Plot it
-  plt <- ggplot(mapdat) +
-            geom_sf(aes(fill = get(severity_var))) +
-            theme_void() +
-            viridis::scale_fill_viridis() +
-            labs(fill=severity_var_label)
-  if (!is.na(label_locs)){
-    if (tolower(label_locs)=="all"){
-      plt <- plt +
-        geom_text(mapdat, aes(X,Y, label=NAME), size=5)
-     } else if (!is.na(label_locs)){
-        label_dat <-  mapdat %>% filter(NAME %in% label_locs)
-        plt <- plt + geom_sf_text(data=label_dat, aes(label=NAME), size=3, hjust=0.5)
-     }
-  }
-  
-  return(plt)
 }
 
+geoid_params <- data.table::rbindlist(geoid_params)
+age_pop_10yr <- data.table::rbindlist(age_pop_10yr)
 
 
-map_severity(severity_var = "p_death_inf", 
-             severity_var_label = "IFR",
-             geoid_params = "../raw_data/BGD/geoid-params.csv",
-             geodata = "../raw_data/BGD/geodata.csv",
-             shp = "../raw_data/BGD/bgd_admbnda_adm2_bbs_20180410/bgd_admbnda_adm2_bbs_20180410.shp",
-             shp_name_var = "ADM2_EN",
-             label_locs = NA)
+# generate a geodata.csv like used in the CSP
+geodata <- age_pop_10yr %>% 
+  dplyr::group_by(geoid, adm2, adm0, adm1, country, adm1_name) %>%
+  dplyr::summarize(pop = round(sum(pop)),
+                   admin0 = country_codes[c]) %>%
+  dplyr::select(geoid, adm2=adm2, adm1=adm1, adm0=adm0, adm1_name, country, pop)
+
+# Add regions to geodata
+geodata <- geodata %>%
+  dplyr::mutate(region = globaltoolboxlite::get_region(adm0),
+                who_region = globaltoolboxlite::get_whoregion(adm0),
+                subregion = globaltoolboxlite::get_subregion(adm0))
+
+geodata <- geodata %>% dplyr::rename(admin2=adm2, admin1=adm1, admin0=adm0) # so they match with the CSP
+
+
+readr::write_csv(geoid_params, file.path("raw_data", "global_severity", "GLOBAL_geoid_params.csv"))
+readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", "GLOBAL_age_pop_10yr.csv"))
+readr::write_csv(geodata, file.path("raw_data", "global_severity", "GLOBAL_geodata.csv"))
+
+```
+
+
+
+# ---> need to figure out what happens to RR with pop=0 <-----
+
+
+
+```{r}
+
+geoid_params <- readr::read_csv(file.path("raw_data", "global_severity", "GLOBAL_geoid_params.csv"))
+age_pop_10yr <- readr::read_csv(file.path("raw_data", "global_severity", "GLOBAL_age_pop_10yr.csv"))
+geodata <- readr::read_csv(file.path("raw_data", "global_severity", "GLOBAL_geodata.csv"))
+
+table(geodata$region)
+
+# Make locations with 0 population estimates NA
+geoid_params <- geoid_params %>% 
+  dplyr::left_join(geodata %>% dplyr::select(geoid, pop))
+
+cols_to_na <- which(!(colnames(geoid_params) %in% c("geoid","pop")))
+which_na <- which(geoid_params$pop==0)
+geoid_params[which_na, cols_to_na] <- NA
+
+
+# add some vars to geoid_params
+geoid_params <- geoid_params %>% 
+  dplyr::mutate(p_asymp_inf = 1 - p_symp_inf,
+                p_asymp_mild_inf = p_asymp_inf + p_mild_inf)
+
+
+mapdat <- merge_severity_gadm_data(
+                              geoid_params = geoid_params,
+                              geodata = geodata,
+                              shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_combo.shp",
+                              shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                              shp2_name_var = "GID_2")
+
+
+
+```
+
+
+
+
+
+
+
+# Build the map
+We will start small because it takes a while to load
+
+
+
+# Proportion not asympt or mild (essentially detectible cases)
+
+
+```{r}
+
+mapdat$shp_adm2$p_not_asymptmild_inf <- 1 - mapdat$shp_adm2$p_asymp_mild_inf
+mapdat_data <- sf::st_set_geometry(mapdat$shp_adm2, NULL)
+
+hist(mapdat$shp_adm2$p_not_asymptmild_inf, breaks=50)
+hist(filter_var("p_not_asymptmild_inf", countries_, mapdat$shp_adm2), breaks=50)
+hist(filter_var("p_not_asymptmild_inf", "USA", mapdat$shp_adm2), breaks=50)
+
+
+p_not_asympt_mild <- map_severity_gadm_fast(severity_var = "p_not_asymptmild_inf", 
+                  severity_var_label = "Pr(Not Asympt or Mild)",
+                  .region = "Africa",
+                  .country = NULL,
+                  merged_data = mapdat,
+                  color_pal = "inferno",
+                  legend_pos = c(.2, .2),
+                  leg_breaks = seq(0,.2,.05),
+                  log_trans = FALSE,
+                  leg_range = c(0,.2),
+                  border_size = c(.25, .01),
+                  label_locs = NA) +
+                  coord_sf(xlim = c(-20, 53), ylim=c(-35,40), expand=FALSE) +
+                  theme(legend.text=element_text(size=rel(0.5))) +
+                  guides(colour=guide_legend(override.aes = list(size = .75)))
+
+
+#plot(p_not_asympt_mild)
+#ggsave("raw_data/figures/p_asymptmild_africa.pdf", plot=p_not_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_notasymptmild_africa.png", plot=p_not_asympt_mild, dpi=600)
+
+
+p_not_asympt_mild_b <- map_severity_gadm_fast(severity_var = "p_not_asymptmild_inf", 
+                  severity_var_label = "Pr(Not Asympt or Mild)",
+                  .region = "Americas",
+                  region_var = "region",
+                  .country = c("USA","CAN","MEX", globaltoolboxlite::get_iso(c("Guatemala","Nicaragua","Honduras","Costa Rica","El Salvador","Belize","Panama"))),
+                  color_pal = "inferno",
+                  merged_data = mapdat,
+                  legend_pos = c(.2,.2),
+                  leg_breaks = seq(0,.2,.05),
+                  log_trans = FALSE,
+                  leg_range = c(0,.2),
+                  border_size = c(.25, .01),
+                  label_locs = NA) +
+                  coord_sf(xlim = c(-180, -55), ylim=c(10,75), expand=FALSE) +
+                  theme(legend.text=element_text(size=rel(0.5))) +
+                  guides(colour=guide_legend(override.aes = list(size = .75)))
+
+#plot(p_not_asympt_mild_b)
+#ggsave("raw_data/figures/p_asymptmild_usa.pdf", plot=p_not_asympt_mild_b, dpi=300)
+ggsave("raw_data/figures/p_notasymptmild_NAmerica.png", plot=p_not_asympt_mild_b, dpi=600)
+
+
+p_comb <- gridExtra::grid.arrange(p_not_asympt_mild_b +        
+                                    theme(legend.position = c(.4,.2)) +
+                                    guides(colour=guide_legend(override.aes = list(size = .05))),
+                                  p_not_asympt_mild +
+                                    theme(legend.position = "none"), 
+                                  ncol=2, nrow=1, widths=c(1.3,1))
+
+ggsave("raw_data/figures/p_notasymptmild_NAmerica_Africa.png", plot=p_comb, dpi=600, width = 14, height = 8, units = "in")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+
+countries_ <- get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC"))
+
+par(mfrow=c(2,1))
+hist(geoid_params$p_death_inf, breaks=50)
+hist(filter_var("p_death_inf", countries_), breaks=50)
+
+hist(geoid_params$p_symp_inf, breaks=50)
+hist(filter_var("p_symp_inf", countries_), breaks=50)
+summary(filter_var("p_symp_inf", countries_))
+
+hist(geoid_params$p_asymp_mild_inf, breaks=50)
+hist(filter_var("p_asymp_mild_inf", countries_), breaks=50)
+par(mfrow=c(1,1))
+
+
+p_ifr <- map_severity_gadm(severity_var = "p_death_inf", 
+                  severity_var_label = "IFR",
+                  .region = "Africa",
+                  .country = countries_,
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = shp_adm2,
+                  shp_adm0 = shp_adm0,
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.9,.1),
+                  leg_breaks = c(0, 0.001, 0.002, 0.003, 0.004, 0.005, 0.007, 0.01),
+                  log_trans = TRUE,
+                  leg_range = c(0,.01),
+                  label_locs = NA)
+plot(p_ifr)
+#ggsave("raw_data/figures/p_ifr_africa.pdf", plot=p_ifr, dpi=600)
+ggsave("raw_data/figures/p_ifr_africa.png", plot=p_ifr, dpi=300)
+
+# Faster version using pre-merged data
+p_ifr <- map_severity_gadm_fast(severity_var = "p_death_inf", 
+                  severity_var_label = "IFR",
+                  .region = "Africa",
+                  .country = countries_,
+                  merged_data = mapdat,
+                  legend_pos = c(.9,.1),
+                  leg_breaks = c(0, 0.001, 0.002, 0.003, 0.004, 0.005, 0.007, 0.01),
+                  log_trans = TRUE,
+                  leg_range = c(0,.01),
+                  label_locs = NA)
+
+plot(p_ifr)
+#ggsave("raw_data/figures/p_ifr_africa.pdf", plot=p_ifr, dpi=600)
+ggsave("raw_data/figures/p_ifr_africa.png", plot=p_ifr, dpi=300)
+
+
+
+
+p_sympt <- map_severity_gadm_fast(severity_var = "p_symp_inf", 
+                  severity_var_label = "Pr(Sympt)",
+                  .region = "Africa",
+                  .country = countries_,
+                  merged_data = mapdat,
+                  legend_pos = c(.8,.8),
+                  leg_breaks = seq(.3,.5, .05),
+                  log_trans = FALSE,
+                  leg_range = c(.345,.45),
+                  label_locs = NA)
+plot(p_sympt)
+#ggsave("raw_data/figures/p_sympt_africa.pdf", plot=p_sympt, dpi=600)
+ggsave("raw_data/figures/p_sympt_africa.png", plot=p_sympt, dpi=300)
+
+
+
+
+
+
+p_asympt_mild <- map_severity_gadm(severity_var = "p_asymp_mild_inf", 
+                  severity_var_label = "Pr(Asympt or Mild)",
+                  .region = "Africa",
+                  .country = countries_,
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = shp_adm2,
+                  shp_adm0 = shp_adm0,
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.9,.15),
+                  leg_breaks = seq(.80,1,.05),
+                  log_trans = FALSE,
+                  leg_range = c(.80,1),
+                  label_locs = NA)
+
+plot(p_asympt_mild)
+ggsave("raw_data/figures/p_asymptmild_africa.pdf", plot=p_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_asymptmild_africa.png", plot=p_asympt_mild, dpi=600)
+
+
+
+p_asympt_mild <- map_severity_gadm(severity_var = "p_asymp_mild_inf", 
+                  severity_var_label = "Pr(Asympt or Mild)",
+                  .region = "Americas",
+                  .country = "USA",
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = shp_adm2,
+                  shp_adm0 = shp_adm0,
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.9,.15),
+                  leg_breaks = seq(.80,1,.05),
+                  log_trans = FALSE,
+                  leg_range = c(.80,1),
+                  label_locs = NA) +
+                  coord_sf(xlim = c(-150, -60), expand=FALSE)
+
+plot(p_asympt_mild)
+ggsave("raw_data/figures/p_asymptmild_usa.pdf", plot=p_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_asymptmild_usa.png", plot=p_asympt_mild, dpi=600)
+
+summary(filter_var("p_asymp_mild_inf", countries_))
+summary(filter_var("p_asymp_mild_inf", "USA"))
+
+
+```
+
+
+
+```{r}
+
+
+summary(filter_var("p_not_asymptmild_inf", countries_, mapdat$shp_adm2))
+summary(filter_var("p_not_asymptmild_inf", "USA", mapdat$shp_adm2))
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Americas
+summary(geoid_params$p_asymp_mild_inf)
+hist(geoid_params$p_asymp_mild_inf, breaks=100)
+#tmp <- as.data.frame(table(geoid_params$p_asymp_mild_inf))
+
+p_asympt_mild <- map_severity_gadm(severity_var = "p_asymp_mild_inf", 
+                  severity_var_label = "Pr(Asympt or Mild)",
+                  .region = "Americas",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, .05,.10,.2,.3,.35,.4,.45,.5,.55,.6,.8,1),
+                  log_trans = FALSE,
+                  leg_range = c(.7,1),
+                  label_locs = NA)
+
+ggsave("raw_data/figures/p_asymptmild_americas.pdf", plot=p_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_asymptmild_americas.png", plot=p_asympt_mild, dpi=600)
+
+
+
+
+# Europe
+summary(geoid_params$p_asymp_mild_inf)
+hist(geoid_params$p_asymp_mild_inf, breaks=100)
+#tmp <- as.data.frame(table(geoid_params$p_asymp_mild_inf))
+
+p_asympt_mild <- map_severity_gadm(severity_var = "p_asymp_mild_inf", 
+                  severity_var_label = "Pr(Asympt or Mild)",
+                  .region = "Europe",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, .05,.10,.2,.3,.35,.4,.45,.5,.55,.6,.8,1),
+                  log_trans = FALSE,
+                  leg_range = c(.7,1),
+                  label_locs = NA)
+
+ggsave("raw_data/figures/p_asymptmild_europe.pdf", plot=p_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_asymptmild_europe.png", plot=p_asympt_mild, dpi=600)
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+```{r}
+
+hist(geoid_params$p_death_inf, breaks=50)
+
+p_ifr <- map_severity_gadm(severity_var = "p_death_inf", 
+                  severity_var_label = "IFR",
+                  .region = "Africa",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, 0.001, 0.002, 0.003, 0.004, 0.005, 0.007, 0.01),
+                  log_trans = TRUE,
+                  leg_range = c(0,.01),
+                  label_locs = NA)
+
+dir.create("raw_data/figures",recursive = TRUE)
+ggsave("raw_data/figures/p_ifr_africa.pdf", plot=p_ifr, dpi=600)
+ggsave("raw_data/figures/p_ifr_africa.png", plot=p_ifr, dpi=600)
+
+
+
+summary(geoid_params$p_symp_inf)
+hist(geoid_params$p_symp_inf, breaks=100)
+
+p_sympt <- map_severity_gadm(severity_var = "p_symp_inf", 
+                  severity_var_label = "Pr(Sympt)",
+                  .region = "Africa",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, .05,.10,.2,.3,.35,.4,.45,.5,.55,.6,.8,1),
+                  log_trans = FALSE,
+                  leg_range = c(.3,.75),
+                  label_locs = NA)
+
+ggsave("raw_data/figures/p_sympt_africa.pdf", plot=p_sympt, dpi=600)
+ggsave("raw_data/figures/p_sympt_africa.png", plot=p_sympt, dpi=600)
+
+
+
+
+summary(geoid_params$p_asymp_mild_inf)
+hist(geoid_params$p_asymp_mild_inf, breaks=100)
+#tmp <- as.data.frame(table(geoid_params$p_asymp_mild_inf))
+
+p_asympt_mild <- map_severity_gadm(severity_var = "p_asymp_mild_inf", 
+                  severity_var_label = "Pr(Asympt or Mild)",
+                  .region = "Africa",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, .05,.10,.2,.3,.35,.4,.45,.5,.55,.6,.8,1),
+                  log_trans = FALSE,
+                  leg_range = c(.7,1),
+                  label_locs = NA)
+
+ggsave("raw_data/figures/p_asymptmild_africa.pdf", plot=p_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_asymptmild_africa.png", plot=p_asympt_mild, dpi=600)
+
+
+
+
+
+
+
+# Americas
+summary(geoid_params$p_asymp_mild_inf)
+hist(geoid_params$p_asymp_mild_inf, breaks=100)
+#tmp <- as.data.frame(table(geoid_params$p_asymp_mild_inf))
+
+p_asympt_mild <- map_severity_gadm(severity_var = "p_asymp_mild_inf", 
+                  severity_var_label = "Pr(Asympt or Mild)",
+                  .region = "Americas",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, .05,.10,.2,.3,.35,.4,.45,.5,.55,.6,.8,1),
+                  log_trans = FALSE,
+                  leg_range = c(.7,1),
+                  label_locs = NA)
+
+ggsave("raw_data/figures/p_asymptmild_americas.pdf", plot=p_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_asymptmild_americas.png", plot=p_asympt_mild, dpi=600)
+
+
+
+
+# Europe
+summary(geoid_params$p_asymp_mild_inf)
+hist(geoid_params$p_asymp_mild_inf, breaks=100)
+#tmp <- as.data.frame(table(geoid_params$p_asymp_mild_inf))
+
+p_asympt_mild <- map_severity_gadm(severity_var = "p_asymp_mild_inf", 
+                  severity_var_label = "Pr(Asympt or Mild)",
+                  .region = "Europe",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, .05,.10,.2,.3,.35,.4,.45,.5,.55,.6,.8,1),
+                  log_trans = FALSE,
+                  leg_range = c(.7,1),
+                  label_locs = NA)
+
+ggsave("raw_data/figures/p_asymptmild_europe.pdf", plot=p_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_asymptmild_europe.png", plot=p_asympt_mild, dpi=600)
+
+
+
+
+
+
+```
+
+
+
+
+
+# Sub Regions    
+
+```{r}
+
+geoid_params <- readr::read_csv(file.path("../raw_data", "global_severity", "GLOBAL_geoid_params.csv"))
+age_pop_10yr <- readr::read_csv(file.path("../raw_data", "global_severity", "GLOBAL_age_pop_10yr.csv"))
+geodata <- readr::read_csv(file.path("../raw_data", "global_severity", "GLOBAL_geodata.csv"))
+
+# Make locations with 0 population estimates NA
+geoid_params <- geoid_params %>% 
+  dplyr::left_join(geodata %>% dplyr::select(geoid, pop, region, who_region, subregion))
+
+cols_to_na <- which(!(colnames(geoid_params) %in% c("geoid","pop")))
+which_na <- which(geoid_params$pop==0)
+geoid_params[which_na, cols_to_na] <- NA
+
+# add some vars to geoid_params
+geoid_params <- geoid_params %>% 
+  dplyr::mutate(p_asymp_inf = 1 - p_symp_inf,
+                p_asymp_mild_inf = p_asymp_inf + p_mild_inf)
+geoid_params_plusregions <- geoid_params
+geoid_params <- geoid_params %>% dplyr::select(-c(region, subregion, who_region, pop))
+
+
+table(geodata$region)
+table(geodata$subregion)
+table(geodata$who_region)
+```
+
+
+
+```{r}
+# Build the map
+hist(geoid_params$p_death_inf, breaks=50)
+
+reg_ <- "Northern America"
+reg_var <- "subregion"
+
+hist((geoid_params %>% filter(get(reg_var) %in% reg_))$p_death_inf, breaks=50)
+
+
+p_ifr <- map_severity_gadm(severity_var = "p_death_inf", 
+                  severity_var_label = "IFR",
+                  .region = reg_,
+                  region_var = reg_var,
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, 0.001, 0.002, 0.003, 0.004, 0.005, 0.007, 0.01, 0.02, 0.03),
+                  log_trans = FALSE,
+                  color_pal = "plasma",
+                  label_locs = NA)
+p_ifr
+dir.create("raw_data/figures",recursive = TRUE, showWarnings = FALSE)
+ggsave(paste0("raw_data/figures/p_ifr_", reg_, ".pdf"), plot=p_ifr, dpi=600)
+ggsave(paste0("raw_data/figures/p_ifr_", reg_, ".png"), plot=p_ifr, dpi=600)
+
+```
+
+
+
+```{r}
+reg_ <- " Sub-Saharan Africa"
+reg_var <- "subregion"
+
+p_ifr <- map_severity_gadm(severity_var = "p_death_inf", 
+                  severity_var_label = "IFR",
+                  .region = reg_,
+                  region_var = reg_var,
+                  .country = NULL, #NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, 0.001, 0.002, 0.003, 0.004, 0.005, 0.007, 0.01, 0.02, 0.03),
+                  log_trans = FALSE,
+                  leg_range = c(0,.015),
+                  color_pal = "plasma",
+                  label_locs = NA)
+
+dir.create("raw_data/figures",recursive = TRUE, showWarnings = FALSE)
+ggsave(paste0("raw_data/figures/p_ifr_", reg_, ".pdf"), plot=p_ifr, dpi=600)
+ggsave(paste0("raw_data/figures/p_ifr_", reg_, ".png"), plot=p_ifr, dpi=600)
+
+
+
+
+```
+
+
+# Run global
+
+```{r}
+
+
+geoid_params <- readr::read_csv(file.path("../raw_data", "global_severity", "GLOBAL_geoid_params.csv"))
+age_pop_10yr <- readr::read_csv(file.path("../raw_data", "global_severity", "GLOBAL_age_pop_10yr.csv"))
+geodata <- readr::read_csv(file.path("../raw_data", "global_severity", "GLOBAL_geodata.csv"))
+
+# Make locations with 0 population estimates NA
+geoid_params <- geoid_params %>% 
+  dplyr::left_join(geodat %>% dplyr::select(geoid, pop))
+
+cols_to_na <- which(!(colnames(geoid_params) %in% c("geoid","pop")))
+which_na <- which(geoid_params$pop==0)
+geoid_params[which_na, cols_to_na] <- NA
+
+# add some vars to geoid_params
+geoid_params <- geoid_params %>% 
+  dplyr::mutate(p_asymp_inf = 1 - p_symp_inf,
+                p_asymp_mild_inf = p_asymp_inf + p_mild_inf)
+
+
+table(geodata$region)
+table(geodata$subregion)
+table(geodata$who_region)
+
+
+
+
+
+# Build the map
+hist(geoid_params$p_death_inf, breaks=50)
+
+p_ifr <- map_severity_gadm(severity_var = "p_death_inf", 
+                  severity_var_label = "IFR",
+                  .region = "Africa",
+                  region_var = "region",
+                  .country = "ZMB", #NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, 0.001, 0.002, 0.003, 0.004, 0.005, 0.007, 0.01, 0.02, 0.03),
+                  log_trans = TRUE,
+                  color_pal = "plasma",
+                  label_locs = NA)
+
+dir.create("raw_data/figures",recursive = TRUE)
+ggsave("raw_data/figures/p_ifr_africa.pdf", plot=p_ifr, dpi=600)
+ggsave("raw_data/figures/p_ifr_africa.png", plot=p_ifr, dpi=600)
+
+
+
+summary(geoid_params$p_symp_inf)
+hist(geoid_params$p_symp_inf, breaks=100)
+
+p_sympt <- map_severity_gadm(severity_var = "p_symp_inf", 
+                  severity_var_label = "Pr(Sympt)",
+                  .region = "Africa",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, .05,.10,.2,.3,.35,.4,.45,.5,.55,.6,.8,1),
+                  log_trans = FALSE,
+                  leg_range = c(.3,.75),
+                  label_locs = NA)
+
+ggsave("raw_data/figures/p_sympt_africa.pdf", plot=p_sympt, dpi=600)
+ggsave("raw_data/figures/p_sympt_africa.png", plot=p_sympt, dpi=600)
+
+
+
+
+summary(geoid_params$p_asymp_mild_inf)
+hist(geoid_params$p_asymp_mild_inf, breaks=100)
+#tmp <- as.data.frame(table(geoid_params$p_asymp_mild_inf))
+
+p_asympt_mild <- map_severity_gadm(severity_var = "p_asymp_mild_inf", 
+                  severity_var_label = "Pr(Asympt or Mild)",
+                  .region = "Africa",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, .05,.10,.2,.3,.35,.4,.45,.5,.55,.6,.8,1),
+                  log_trans = FALSE,
+                  leg_range = c(.7,1),
+                  label_locs = NA)
+
+ggsave("raw_data/figures/p_asymptmild_africa.pdf", plot=p_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_asymptmild_africa.png", plot=p_asympt_mild, dpi=600)
+
+
+
+
+
+
+
+# Americas
+summary(geoid_params$p_asymp_mild_inf)
+hist(geoid_params$p_asymp_mild_inf, breaks=100)
+#tmp <- as.data.frame(table(geoid_params$p_asymp_mild_inf))
+
+p_asympt_mild <- map_severity_gadm(severity_var = "p_asymp_mild_inf", 
+                  severity_var_label = "Pr(Asympt or Mild)",
+                  .region = "Americas",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, .05,.10,.2,.3,.35,.4,.45,.5,.55,.6,.8,1),
+                  log_trans = FALSE,
+                  leg_range = c(.7,1),
+                  label_locs = NA)
+
+ggsave("raw_data/figures/p_asymptmild_americas.pdf", plot=p_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_asymptmild_americas.png", plot=p_asympt_mild, dpi=600)
+
+
+
+
+# Europe
+summary(geoid_params$p_asymp_mild_inf)
+hist(geoid_params$p_asymp_mild_inf, breaks=100)
+#tmp <- as.data.frame(table(geoid_params$p_asymp_mild_inf))
+
+p_asympt_mild <- map_severity_gadm(severity_var = "p_asymp_mild_inf", 
+                  severity_var_label = "Pr(Asympt or Mild)",
+                  .region = "Europe",
+                  .country = NULL, #get_iso(c("Zambia","Tanzania", "Uganda","Rwanda","Kenya", "DRC")),
+                  geoid_params = geoid_params,
+                  geodata = geodata,
+                  shp_adm2 = "raw_data/gadm36_levels_shp/gadm36_2.shp",
+                  shp_adm0 = "raw_data/gadm36_levels_shp/gadm36_0.shp",
+                  shp2_name_var = "GID_2",
+                  legend_pos = c(.8,.8),
+                  leg_breaks = c(0, .05,.10,.2,.3,.35,.4,.45,.5,.55,.6,.8,1),
+                  log_trans = FALSE,
+                  leg_range = c(.7,1),
+                  label_locs = NA)
+
+ggsave("raw_data/figures/p_asymptmild_europe.pdf", plot=p_asympt_mild, dpi=600)
+ggsave("raw_data/figures/p_asymptmild_europe.png", plot=p_asympt_mild, dpi=600)
+
+
+
+
+
 
 ```
 
