@@ -1,0 +1,397 @@
+---
+title: "Age adjustment vignette"
+author: "Shaun Truelove"
+date: "5/1/2020"
+output:
+  html_document:
+    df_print: paged
+    fig_caption: true
+    theme: lumen
+    toc: true
+    toc_float:
+      toc_collapsed: true
+    toc_depth: 3
+    number_sections: false
+    pandoc_args: ["--wrap=none", "--top-level-division=chapter"]
+  editor_options: 
+    chunk_output_type: console
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(root = here::here())
+#knitr::opts_chunk$set(dev="CairoPNG")
+knitr::opts_chunk$set(dev.args = list(png = list(type = "cairo")))
+
+
+library(tidyverse)
+library(covidSeverity)
+#devtools::install_github("HopkinsIDD/globaltoolboxlite", force=TRUE)
+library(globaltoolboxlite)
+library(foreach)
+library(doParallel)
+library(gridExtra)
+library(sf)
+
+
+# Functions
+
+filter_var <- function(p_var="p_death_inf", countries_=c("ZMB", "COD","KEN"), data = geoid_params){
+  data %>% filter(grepl(paste(countries_, collapse = "|"), geoid)) %>% pull(p_var)
+}
+
+
+
+
+```
+
+
+# GLOBAL SEVERITY using WorldPop
+
+--DOWNLOAD SHAPEFILES
+Users need to download their own shapefiles for this.
+
+
+
+### First get the list of countries included in the GADM shapefiles
+
+```{r}
+getwd()
+```
+
+Shapefiles
+
+```{r}
+
+shp <- "raw_data/gadm36_levels_shp/gadm36_2.shp"
+shp_adm2 <- sf::read_sf(shp)
+"KOS" %in% shp_adm2$GID_0
+
+shp1 <- "raw_data/gadm36_levels_shp/gadm36_1.shp"
+shp_adm1 <- sf::read_sf(shp1)
+"KOS" %in% shp_adm1$GID_0
+"XKO" %in% shp_adm1$GID_0
+
+shp0 <- "raw_data/gadm36_levels_shp/gadm36_0.shp"
+shp_adm0 <- sf::read_sf(shp0)
+"KOS" %in% shp_adm0$GID_0
+
+
+```
+
+
+
+```{r}
+
+shp_adm2 <- shp_adm2 %>% mutate(GID_0 = ifelse(GID_0=="XKO", "KOS", GID_0)) # Fix Kosovo
+st_write(shp_adm2, shp, delete_layer=TRUE, append = FALSE) # Re-save it
+
+shp_adm0 <- shp_adm0 %>% mutate(GID_0 = ifelse(GID_0=="XKO", "KOS", GID_0)) # Fix Kosovo
+st_write(shp_adm0, shp0, delete_layer=TRUE, append = FALSE) # Re-save it
+
+# For countries with no Level 2 shapefiles, grab the level 1 or 0
+shp_adm1 <- shp_adm1 %>% mutate(GID_0 = ifelse(GID_0=="XKO", "KOS", GID_0)) # Fix Kosovo
+st_write(shp_adm1, shp1, delete_layer=TRUE, append = FALSE) # Re-save it
+
+
+shp_adm2_countries <- unique(shp_adm2$GID_0)
+shp_adm0_countries <- unique(shp_adm0$GID_0)
+shp_adm1_countries <- unique(shp_adm1$GID_0)
+
+
+adm1only_countries <- shp_adm1_countries[!(shp_adm1_countries %in% shp_adm2_countries)]
+adm0only_countries <- shp_adm0_countries[!(shp_adm0_countries %in% c(adm1only_countries, shp_adm2_countries))]
+
+
+shp_global_adm2 <- shp_adm2  %>% mutate(source = "gadm36_2") %>%
+  bind_rows(shp_adm1 %>% filter(GID_0 %in% adm1only_countries) %>% mutate(source = "gadm36_1")) %>%
+                                  bind_rows(shp_adm0 %>% filter(GID_0 %in% adm0only_countries) %>% mutate(source = "gadm36_0"))            
+
+# for simplicity, i will rename the 
+shp_global_adm2 <- shp_global_adm2 %>% 
+  mutate(NAME_2 = ifelse(is.na(GID_2) & !is.na(GID_1), NAME_1, NAME_2),
+         GID_2 = ifelse(is.na(GID_2) & !is.na(GID_1), GID_1, GID_2)) %>%
+  mutate(NAME_2 = ifelse(is.na(GID_2) & !is.na(GID_0), NAME_0, NAME_2),
+         GID_2 = ifelse(is.na(GID_2) & !is.na(GID_0), GID_0, GID_2))
+
+# standardize the names of adm2
+shp_global_adm2 <- shp_global_adm2 %>%
+  mutate(NAME_2_orig = NAME_2,
+         NAME_1_orig = NAME_1,
+         NAME_2 = globaltoolboxlite::standardize_location_strings(NAME_2),
+         NAME_1 = globaltoolboxlite::standardize_location_strings(NAME_1))
+
+#shp_global_adm2_afg <- sf::read_sf(shp) %>% filter(!!as.name(shp_country_var)=="AFG")
+shp_data <- sf::st_set_geometry(shp_global_adm2, NULL)
+
+country_codes_gadm <- unique(shp_global_adm2$GID_0)
+country_names <- unique(shp_global_adm2$NAME_0)
+country_codes <- country_codes_gadm
+#country_codes[country_codes=="XKO"] <- "KOS"
+
+# Save the combined shapefiles
+st_write(shp_global_adm2, "raw_data/gadm36_levels_shp/gadm36_combo.shp", delete_layer=TRUE, append = FALSE) # Re-save it
+
+
+```
+
+
+### Then get the age distributions by Admin level 2
+
+```{r, eval=FALSE}
+
+dir.create(file.path("raw_data", "global_severity"), recursive = TRUE, showWarnings = FALSE)
+
+for (c in seq_along(country_codes)){ 
+#for (c in 163:length(country_codes)){ 
+  
+  # Download and save all the geotifs from worldpop
+  filenames <- globaltoolboxlite::download_worldpop_agetifs(country=country_codes[c], year="2020", save_dir="raw_data/geotifs", cores=25)
+  
+  age_pop_data <- globaltoolboxlite::load_worldpop_age(shp=shp_global_adm2, 
+                                                       country=country_codes[c], year="2020", 
+                                                       save_dir="raw_data/geotifs", 
+                                                       cores=25,
+                                                       loc_var = "NAME_2",
+                                                       add_pop_to_shapefile = FALSE,
+                                                       shp_country_var="GID_0")
+  
+  age_pop_data <- age_pop_data %>% dplyr::rename(adm2=NAME_2)
+  age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
+  readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
+  readr::write_csv(age_pop_data, file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_data.csv")))
+  
+  # delete the geotifs to save space (they are >10G per country)
+  unlink(file.path("../raw_data/geotifs", country_codes[c]), recursive = TRUE)
+}
+
+```
+
+
+
+### Get distributions for KOS and countries without ADm2 shapefiles
+
+```{r, eval=FALSE}
+
+
+# Kosovo
+# - renamed shapefile GID_0 above
+
+country_codes_tmp <- "KOS"
+{
+ # Download and save all the geotifs from worldpop
+  filenames <- globaltoolboxlite::download_worldpop_agetifs(country=country_codes_tmp, year="2020", save_dir="raw_data/geotifs", cores=25)
+
+  age_pop_data <- globaltoolboxlite::load_worldpop_age(shp=shp_global_adm2, 
+                                                       country=country_codes_tmp, year="2020", 
+                                                       save_dir="raw_data/geotifs", 
+                                                       cores=25,
+                                                       loc_var = "NAME_2",
+                                                       add_pop_to_shapefile = FALSE,
+                                                       shp_country_var="GID_0")
+  
+  age_pop_data <- age_pop_data %>% dplyr::rename(adm2=NAME_2)
+  age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
+  readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", paste0(country_codes_tmp,"_age_pop_10yr.csv")))
+  readr::write_csv(age_pop_data, file.path("raw_data", "global_severity", paste0(country_codes_tmp,"_age_pop_data.csv")))
+  
+  # delete the geotifs to save space (they are >10G per country)
+  unlink(file.path("raw_data/geotifs", country_codes_tmp), recursive = TRUE)
+}
+
+
+
+
+# Get countries without Adm2
+
+# Adm1 only countries
+for (c in 4:length(adm1only_countries)){ 
+  
+  # Download and save all the geotifs from worldpop
+  filenames <- tryCatch({
+    globaltoolboxlite::download_worldpop_agetifs(country=adm1only_countries[c], 
+                                                 year="2020", save_dir="raw_data/geotifs", cores=25)
+  },
+  error=function(e) NA
+  )
+  if (is.na(filenames)) next
+  
+  age_pop_data <- tryCatch({
+    globaltoolboxlite::load_worldpop_age(shp=shp_global_adm2, 
+                                                       country=adm1only_countries[c], 
+                                                       year="2020", 
+                                                       save_dir="raw_data/geotifs", 
+                                                       cores=25,
+                                                       loc_var = "NAME_2",
+                                                       add_pop_to_shapefile = FALSE,
+                                                       shp_country_var="GID_0")
+  },
+  error=function(e) NA
+  )
+  if (is.na(age_pop_data)) next
+  
+  age_pop_data <- age_pop_data %>% dplyr::rename(adm2=NAME_2)
+  age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
+  readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", paste0(adm1only_countries[c],"_age_pop_10yr.csv")))
+  readr::write_csv(age_pop_data, file.path("raw_data", "global_severity", paste0(adm1only_countries[c],"_age_pop_data.csv")))
+  
+  # delete the geotifs to save space (they are >10G per country)
+  unlink(file.path("raw_data/geotifs", adm1only_countries[c]), recursive = TRUE)
+}
+
+
+# Adm0 only countries
+for (c in 1:length(adm0only_countries)){ 
+  
+  # Download and save all the geotifs from worldpop
+  filenames <- tryCatch({
+    globaltoolboxlite::download_worldpop_agetifs(country=adm0only_countries[c], 
+                                                            year="2020", save_dir="raw_data/geotifs", cores=25)
+  },
+    error=function(e) NA
+  )
+  if (is.na(filenames)) next
+  
+  age_pop_data <- tryCatch({
+    globaltoolboxlite::load_worldpop_age(shp=shp_global_adm2, 
+                                                       country=adm0only_countries[c], year="2020", 
+                                                       save_dir="raw_data/geotifs", 
+                                                       cores=25,
+                                                       loc_var = "NAME_2",
+                                                       add_pop_to_shapefile = FALSE,
+                                                       shp_country_var="GID_0")
+  },
+  error=function(e) NA
+  )
+  if (is.na(age_pop_data)) next
+  
+  
+  age_pop_data <- age_pop_data %>% dplyr::rename(adm2=NAME_2)
+  age_pop_10yr <- globaltoolboxlite::convert_wp_10yr(age_pop_data)
+  readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", paste0(adm0only_countries[c],"_age_pop_10yr.csv")))
+  readr::write_csv(age_pop_data, file.path("raw_data", "global_severity", paste0(adm0only_countries[c],"_age_pop_data.csv")))
+  
+  # delete the geotifs to save space (they are >10G per country)
+  unlink(file.path("raw_data/geotifs", adm0only_countries[c]), recursive = TRUE)
+}
+
+
+
+```
+
+
+
+
+
+
+### Now estimate the severity parameters for all Admin 2 locations in each country
+
+```{r, eval=FALSE}
+
+for (c in seq_along(country_codes)){ 
+
+  if (!file.exists(file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))) next
+  #if (country_codes[c]=="KOS" | country_codes[c]=="XKO") next
+  age_pop_10yr <- readr::read_csv(file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
+  
+  # Get rid of .y columns and fix .x
+  age_pop_10yr <- age_pop_10yr %>%
+     dplyr::select(-contains(".y"))
+  colnames(age_pop_10yr) <- gsub(".x", "", colnames(age_pop_10yr))
+   
+  # Get proportions
+  age_pop_10yr <- age_pop_10yr %>% 
+    dplyr::select("adm2","pop","pop_m", "pop_f", "age_l","age_r", "age") %>%
+    dplyr::mutate(adm2 = globaltoolboxlite::standardize_location_strings(adm2)) %>%
+    dplyr::group_by(adm2) %>%
+    dplyr::mutate(prop = round(pop / sum(pop),4)) %>%
+    dplyr::ungroup() 
+  
+  # make a geoid and province info
+  age_pop_10yr <- age_pop_10yr %>% 
+    #dplyr::mutate(geoid = as.character(iconvadm2)), 5, "left", 0)))
+    left_join(shp_data %>% 
+                dplyr::filter(GID_0==country_codes[c]) %>%
+                dplyr::select(adm0=GID_0, country=NAME_0, 
+                              adm1=GID_1, adm1_name=NAME_1, 
+                              geoid=GID_2, adm2=NAME_2), 
+              by=c("adm2"="adm2"))
+  
+  # Fix 0s in proportion when 0 population in a district
+  age_pop_10yr <- age_pop_10yr %>% 
+    dplyr::mutate(prop = ifelse(is.nan(prop), 0, prop))
+  
+  # Save the updated version
+  readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv")))
+  
+  if (file.exists(file.path("raw_data", "global_severity", paste0(country_codes[c],"_geoid-params.csv")))) next
+  
+  # Estimate parameters
+  geo_age_params <- get_ageadjustments(age_pop_10yr,
+                                       cores=25,
+                                       n_sims=40,
+                                       n_preds=1000,
+                                       age_grps=c(seq(0,80,by=10),100),
+                                       googlesheet_access=FALSE,
+                                       output_dir="raw_data/global_severity",
+                                       pop_name=country_codes[c])
+}
+
+```
+
+
+
+
+### Plot a map of the countries, colored by severity metrics
+
+```{r}
+source("R/plotting_functions.R")
+
+```
+
+
+
+```{r, eval=FALSE}
+
+# Merge results
+
+geoid_params <- age_pop_10yr <- list()
+
+for (c in seq_along(country_codes)){ 
+  #if (country_codes[c]=="KOS" | country_codes[c]=="XKO") next
+  suppressMessages({
+    geoid_params[[c]] <- tryCatch( readr::read_csv(file.path("raw_data", "global_severity", paste0(country_codes[c],"_geoid-params.csv"))), error=function(e) NULL)
+    age_pop_10yr[[c]] <- tryCatch( readr::read_csv(file.path("raw_data", "global_severity", paste0(country_codes[c],"_age_pop_10yr.csv"))), error=function(e) NULL)
+  })
+}
+
+geoid_params <- data.table::rbindlist(geoid_params)
+age_pop_10yr <- data.table::rbindlist(age_pop_10yr)
+
+
+# generate a geodata.csv like used in the CSP
+geodata <- age_pop_10yr %>% 
+  dplyr::group_by(geoid, adm2, adm0, adm1, country, adm1_name) %>%
+  dplyr::summarize(pop = round(sum(pop)),
+                   admin0 = country_codes[c]) %>%
+  dplyr::select(geoid, adm2=adm2, adm1=adm1, adm0=adm0, adm1_name, country, pop)
+
+# Add regions to geodata
+geodata <- geodata %>%
+  dplyr::mutate(region = globaltoolboxlite::get_region(adm0),
+                who_region = globaltoolboxlite::get_whoregion(adm0),
+                subregion = globaltoolboxlite::get_subregion(adm0))
+
+geodata <- geodata %>% dplyr::rename(admin2=adm2, admin1=adm1, admin0=adm0) # so they match with the CSP
+
+
+readr::write_csv(geoid_params, file.path("raw_data", "global_severity", "GLOBAL_geoid_params.csv"))
+readr::write_csv(age_pop_10yr, file.path("raw_data", "global_severity", "GLOBAL_age_pop_10yr.csv"))
+readr::write_csv(geodata, file.path("raw_data", "global_severity", "GLOBAL_geodata.csv"))
+
+```
+
+
+
+# ---> need to figure out what happens to RR with pop=0 <-----
+
